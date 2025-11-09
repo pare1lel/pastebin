@@ -2,13 +2,163 @@
 const API_URL = 'http://localhost:3000/api';
 
 let currentArticleId = null;
+let currentUser = null;
 
-// 页面加载时获取所有文章
+// 页面加载时检查登录状态
 document.addEventListener('DOMContentLoaded', () => {
+  checkLoginStatus();
+});
+
+// 检查登录状态
+async function checkLoginStatus() {
+  try {
+    const response = await fetch(`${API_URL}/current-user`, {
+      credentials: 'include'
+    });
+    
+    if (response.ok) {
+      const data = await response.json();
+      currentUser = data;
+      showMainInterface();
+    } else {
+      showAuthInterface();
+    }
+  } catch (error) {
+    console.error('检查登录状态错误:', error);
+    showAuthInterface();
+  }
+}
+
+// 显示主界面
+function showMainInterface() {
+  document.getElementById('authContainer').classList.add('hidden');
+  document.getElementById('mainContainer').classList.remove('hidden');
+  document.getElementById('userInfo').style.display = 'block';
+  document.getElementById('currentUsername').textContent = currentUser.username;
+  
   loadArticles();
   initTabMenu();
   initFileUpload();
-});
+}
+
+// 显示登录注册界面
+function showAuthInterface() {
+  document.getElementById('authContainer').classList.remove('hidden');
+  document.getElementById('mainContainer').classList.add('hidden');
+  document.getElementById('userInfo').style.display = 'none';
+}
+
+// 显示登录表单
+function showLoginForm() {
+  document.getElementById('loginForm').classList.remove('hidden');
+  document.getElementById('registerForm').classList.add('hidden');
+}
+
+// 显示注册表单
+function showRegisterForm() {
+  document.getElementById('loginForm').classList.add('hidden');
+  document.getElementById('registerForm').classList.remove('hidden');
+}
+
+// 用户登录
+async function login() {
+  const username = document.getElementById('loginUsername').value.trim();
+  const password = document.getElementById('loginPassword').value;
+  
+  if (!username || !password) {
+    showWarning('用户名和密码不能为空');
+    return;
+  }
+  
+  try {
+    const response = await fetch(`${API_URL}/login`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      credentials: 'include',
+      body: JSON.stringify({ username, password })
+    });
+    
+    const data = await response.json();
+    
+    if (response.ok) {
+      currentUser = { username: data.username };
+      showSuccess('登录成功');
+      showMainInterface();
+    } else {
+      showError(data.error || '登录失败');
+    }
+  } catch (error) {
+    console.error('登录错误:', error);
+    showError('登录失败');
+  }
+}
+
+// 用户注册
+async function register() {
+  const username = document.getElementById('registerUsername').value.trim();
+  const password = document.getElementById('registerPassword').value;
+  const confirmPassword = document.getElementById('registerPasswordConfirm').value;
+  
+  if (!username || !password) {
+    showWarning('用户名和密码不能为空');
+    return;
+  }
+  
+  if (password.length < 6) {
+    showWarning('密码至少需要6个字符');
+    return;
+  }
+  
+  if (password !== confirmPassword) {
+    showWarning('两次输入的密码不一致');
+    return;
+  }
+  
+  try {
+    const response = await fetch(`${API_URL}/register`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      credentials: 'include',
+      body: JSON.stringify({ username, password })
+    });
+    
+    const data = await response.json();
+    
+    if (response.ok) {
+      currentUser = { username: data.username };
+      showSuccess('注册成功');
+      showMainInterface();
+    } else {
+      showError(data.error || '注册失败');
+    }
+  } catch (error) {
+    console.error('注册错误:', error);
+    showError('注册失败');
+  }
+}
+
+// 用户登出
+async function logout() {
+  try {
+    const response = await fetch(`${API_URL}/logout`, {
+      method: 'POST',
+      credentials: 'include'
+    });
+    
+    if (response.ok) {
+      currentUser = null;
+      showSuccess('登出成功');
+      showAuthInterface();
+    }
+  } catch (error) {
+    console.error('登出错误:', error);
+    showError('登出失败');
+  }
+}
 
 // 初始化标签页菜单
 function initTabMenu() {
@@ -64,11 +214,12 @@ function initFileUpload() {
 // 获取所有文章
 async function loadArticles() {
   try {
-    const response = await fetch(`${API_URL}/articles`);
+    const response = await fetch(`${API_URL}/articles`, {
+      credentials: 'include'
+    });
     const articles = await response.json();
     
     renderArticles(articles);
-    updateStats(articles);
   } catch (error) {
     console.error('加载文章错误:', error);
     showError('加载文章失败');
@@ -84,30 +235,40 @@ function renderArticles(articles) {
     return;
   }
   
-  container.innerHTML = articles.map(article => `
-    <div class="ui segment article-item" data-id="${article.id}">
-      <div class="article-title">${escapeHtml(article.title)}</div>
-      <div class="article-preview">${escapeHtml(article.content)}</div>
-      <div class="article-meta">
-        <i class="calendar icon"></i>
-        ${formatDate(article.createdAt)}
-        <span style="margin-left: 20px;">
-          <i class="font icon"></i>
-          ${article.wordCount} 词
-        </span>
-        <span style="margin-left: 20px;">
-          <a href="/article/${article.id}" target="_blank" class="ui primary mini button" onclick="event.stopPropagation()">
-            <i class="external alternate icon"></i>
-            查看详情
-          </a>
-          <button class="ui red mini button" onclick="event.stopPropagation(); deleteArticle(${article.id})">
-            <i class="trash icon"></i>
-            删除
-          </button>
-        </span>
+  container.innerHTML = articles.map(article => {
+    const isAuthor = currentUser && article.authorId === currentUser.userId;
+    const deleteButton = isAuthor ? `
+      <button class="ui red mini button" onclick="event.stopPropagation(); deleteArticle('${article.id}')">
+        <i class="trash icon"></i>
+        删除
+      </button>
+    ` : '';
+    
+    return `
+      <div class="ui segment article-item" data-id="${article.id}">
+        <div class="article-title">${escapeHtml(article.title)}</div>
+        <div class="article-preview">${escapeHtml(article.content)}</div>
+        <div class="article-meta">
+          ${article.author ? `<i class="user icon"></i>${escapeHtml(article.author)}` : '<i class="user outline icon"></i>匿名'}
+          <span style="margin-left: 20px;">
+            <i class="calendar icon"></i>
+            ${formatDate(article.createdAt)}
+          </span>
+          <span style="margin-left: 20px;">
+            <i class="font icon"></i>
+            ${article.wordCount} 词
+          </span>
+          <span style="margin-left: 20px;">
+            <a href="/article/${article.id}" target="_blank" class="ui primary mini button" onclick="event.stopPropagation()">
+              <i class="external alternate icon"></i>
+              查看详情
+            </a>
+            ${deleteButton}
+          </span>
+        </div>
       </div>
-    </div>
-  `).join('');
+    `;
+  }).join('');
 }
 
 // 通过文本添加文章
@@ -131,11 +292,13 @@ async function addArticleByText() {
       headers: {
         'Content-Type': 'application/json'
       },
+      credentials: 'include',
       body: JSON.stringify({ title, content })
     });
     
     if (!response.ok) {
-      throw new Error('添加文章失败');
+      const data = await response.json();
+      throw new Error(data.error || '添加文章失败');
     }
     
     document.getElementById('articleTitle').value = '';
@@ -144,7 +307,7 @@ async function addArticleByText() {
     loadArticles();
   } catch (error) {
     console.error('添加文章错误:', error);
-    showError('添加文章失败');
+    showError(error.message || '添加文章失败');
   }
 }
 
@@ -174,11 +337,13 @@ async function addArticleByFile() {
     
     const response = await fetch(`${API_URL}/articles/upload`, {
       method: 'POST',
+      credentials: 'include',
       body: formData
     });
     
     if (!response.ok) {
-      throw new Error('上传文件失败');
+      const data = await response.json();
+      throw new Error(data.error || '上传文件失败');
     }
     
     document.getElementById('fileArticleTitle').value = '';
@@ -188,7 +353,7 @@ async function addArticleByFile() {
     loadArticles();
   } catch (error) {
     console.error('上传文件错误:', error);
-    showError('上传文件失败');
+    showError(error.message || '上传文件失败');
   }
 }
 
@@ -200,38 +365,24 @@ async function deleteArticle(id) {
   
   try {
     const response = await fetch(`${API_URL}/articles/${id}`, {
-      method: 'DELETE'
+      method: 'DELETE',
+      credentials: 'include'
     });
     
     if (!response.ok) {
-      throw new Error('删除文章失败');
+      const data = await response.json();
+      throw new Error(data.error || '删除文章失败');
     }
     
     showSuccess('文章已删除');
     loadArticles();
   } catch (error) {
     console.error('删除文章错误:', error);
-    showError('删除文章失败');
-  }
-}
-
-// 更新统计信息
-function updateStats(articles) {
-  document.getElementById('articleCount').textContent = articles.length;
-  
-  const totalWords = articles.reduce((sum, article) => sum + article.wordCount, 0);
-  document.getElementById('totalWords').textContent = totalWords.toLocaleString();
-  
-  if (articles.length > 0) {
-    const latest = articles[articles.length - 1];
-    document.getElementById('lastUpdateTime').textContent = formatDate(latest.createdAt);
-  } else {
-    document.getElementById('lastUpdateTime').textContent = '-';
+    showError(error.message || '删除文章失败');
   }
 }
 
 // 工具函数
-
 function escapeHtml(text) {
   const map = {
     '&': '&amp;',

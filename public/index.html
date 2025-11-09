@@ -80,10 +80,92 @@
             border-color: #2185d0;
             background-color: #e7f4ff;
         }
+        .user-info {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+        }
+        .hidden {
+            display: none !important;
+        }
+        .auth-container {
+            max-width: 450px;
+            margin: 100px auto;
+        }
+        .author-badge {
+            display: inline-block;
+            margin-left: 10px;
+            color: #2185d0;
+        }
     </style>
 </head>
 <body>
-    <div class="container">
+    <!-- 用户信息栏 -->
+    <div class="user-info" id="userInfo" style="display: none;">
+        <div class="ui secondary menu">
+            <div class="item">
+                <i class="user icon"></i>
+                <span id="currentUsername"></span>
+            </div>
+            <div class="item">
+                <button class="ui button" onclick="logout()">登出</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 登录/注册界面 -->
+    <div class="auth-container" id="authContainer">
+        <div class="ui segments">
+            <div class="ui segment">
+                <h2 class="ui center aligned header">
+                    <i class="book icon"></i>
+                    英语文章阅读工具
+                </h2>
+            </div>
+            
+            <!-- 登录表单 -->
+            <div class="ui segment" id="loginForm">
+                <h3 class="ui header">登录</h3>
+                <div class="ui form">
+                    <div class="field">
+                        <label>用户名</label>
+                        <input type="text" id="loginUsername" placeholder="输入用户名">
+                    </div>
+                    <div class="field">
+                        <label>密码</label>
+                        <input type="password" id="loginPassword" placeholder="输入密码">
+                    </div>
+                    <button class="ui primary fluid button" onclick="login()">登录</button>
+                    <div class="ui divider"></div>
+                    <button class="ui basic fluid button" onclick="showRegisterForm()">没有账号？点击注册</button>
+                </div>
+            </div>
+
+            <!-- 注册表单 -->
+            <div class="ui segment hidden" id="registerForm">
+                <h3 class="ui header">注册</h3>
+                <div class="ui form">
+                    <div class="field">
+                        <label>用户名</label>
+                        <input type="text" id="registerUsername" placeholder="输入用户名">
+                    </div>
+                    <div class="field">
+                        <label>密码（至少6个字符）</label>
+                        <input type="password" id="registerPassword" placeholder="输入密码">
+                    </div>
+                    <div class="field">
+                        <label>确认密码</label>
+                        <input type="password" id="registerPasswordConfirm" placeholder="再次输入密码">
+                    </div>
+                    <button class="ui primary fluid button" onclick="register()">注册</button>
+                    <div class="ui divider"></div>
+                    <button class="ui basic fluid button" onclick="showLoginForm()">已有账号？点击登录</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="container hidden" id="mainContainer">
         <!-- 头部 -->
         <div class="header-section">
             <h1 class="ui header">
@@ -93,30 +175,6 @@
                     <div class="sub header">添加、浏览和管理你的英语学习文章</div>
                 </div>
             </h1>
-        </div>
-
-        <!-- 统计信息 -->
-        <div class="stats">
-            <div class="ui three column grid">
-                <div class="column">
-                    <div class="ui statistic">
-                        <div class="value" id="articleCount">0</div>
-                        <div class="label">文章总数</div>
-                    </div>
-                </div>
-                <div class="column">
-                    <div class="ui statistic">
-                        <div class="value" id="totalWords">0</div>
-                        <div class="label">总词数</div>
-                    </div>
-                </div>
-                <div class="column">
-                    <div class="ui statistic">
-                        <div class="value" id="lastUpdateTime">-</div>
-                        <div class="label">最后添加</div>
-                    </div>
-                </div>
-            </div>
         </div>
 
         <!-- 添加文章表单 -->
