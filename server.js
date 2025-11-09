@@ -5,6 +5,8 @@ const fs = require('fs');
 const path = require('path');
 const multer = require('multer');
 const { MongoClient, ObjectId } = require('mongodb');
+const { marked } = require('marked');
+const sanitizeHtml = require('sanitize-html');
 const bcrypt = require('bcrypt');
 const session = require('express-session');
 
@@ -271,7 +273,7 @@ app.post('/api/articles/upload', requireAuth, upload.single('file'), async (req,
     }
     
     const newArticle = {
-      title: title || req.file.originalname.replace('.txt', ''),
+      title: title || req.file.originalname.replace('.md', ''),
       content: content.trim(),
       wordCount: content.trim().split(/\s+/).length,
       author: req.session.username,
@@ -307,6 +309,25 @@ app.get('/article/:id', async (req, res) => {
       return res.status(404).send('<h1>文章未找到</h1>');
     }
   
+  // 渲染 Markdown 为 HTML 并清理（防 XSS）
+  const rawHtml = marked.parse(article.content || '');
+  const safeHtml = sanitizeHtml(rawHtml, {
+    allowedTags: sanitizeHtml.defaults.allowedTags.concat([ 'img' ]),
+    allowedAttributes: {
+      a: [ 'href', 'name', 'target', 'rel', 'title' ],
+      img: [ 'src', 'alt', 'title', 'width', 'height' ],
+      '*': [ 'class', 'id', 'style' ]
+    },
+    transformTags: {
+      'a': function(_tagName, attribs) {
+        // 强制外链在新标签页打开并且安全
+        attribs.target = '_blank';
+        attribs.rel = (attribs.rel ? attribs.rel + ' ' : '') + 'noopener noreferrer';
+        return { tagName: 'a', attribs };
+      }
+    }
+  });
+
   // 生成 HTML 页面
   const html = `
 <!DOCTYPE html>
@@ -349,9 +370,6 @@ app.get('/article/:id', async (req, res) => {
             padding: 40px;
             border-radius: 5px;
             box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-            white-space: pre-wrap;
-            word-break: break-word;
-            line-height: 1.8;
             font-size: 1.1em;
             color: #333;
         }
@@ -386,14 +404,14 @@ app.get('/article/:id', async (req, res) => {
                     <i class="calendar icon"></i>
                     添加于: ${new Date(article.createdAt).toLocaleString('zh-CN')}
                 </span>
-                <span style="margin-left: 30px;">
+                <span style="margin-left: 20px;">
                     <i class="font icon"></i>
                     词数: ${article.wordCount}
                 </span>
             </div>
         </div>
         
-        <div class="article-content">${article.content.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</div>
+  <div class="article-content">${safeHtml}</div>
     </div>
 
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>

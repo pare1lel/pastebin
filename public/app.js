@@ -201,12 +201,12 @@ function initFileUpload() {
     uploadArea.classList.remove('dragover');
     
     const files = e.dataTransfer.files;
-    if (files.length > 0 && files[0].name.endsWith('.txt')) {
+    if (files.length > 0 && files[0].name.endsWith('.md')) {
       fileInput.files = files;
       fileName.textContent = files[0].name;
       fileInfo.style.display = 'block';
     } else {
-      showWarning('请上传 .txt 格式的文件');
+      showWarning('请上传 .md 格式的文件');
     }
   });
 }
@@ -259,7 +259,7 @@ function renderArticles(articles) {
             ${article.wordCount} 词
           </span>
           <span style="margin-left: 20px;">
-            <a href="/article/${article.id}" target="_blank" class="ui primary mini button" onclick="event.stopPropagation()">
+            <a href="/article/${article.id}" class="ui primary mini button" onclick="event.stopPropagation()">
               <i class="external alternate icon"></i>
               查看详情
             </a>
@@ -323,8 +323,8 @@ async function addArticleByFile() {
   
   const file = fileInput.files[0];
   
-  if (!file.name.endsWith('.txt')) {
-    showWarning('只支持 .txt 格式文件');
+  if (!file.name.endsWith('.md')) {
+    showWarning('只支持 .md 格式文件');
     return;
   }
   

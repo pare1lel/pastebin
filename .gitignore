@@ -1,4 +1,4 @@
 node_modules/
 uploads/
 package-lock.json
-*.txt
+sample_article.md
