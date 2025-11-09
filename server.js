@@ -4,12 +4,18 @@ const cors = require('cors');
 const fs = require('fs');
 const path = require('path');
 const multer = require('multer');
+const { MongoClient, ObjectId } = require('mongodb');
 
 const app = express();
 const PORT = 3000;
 
-// 数据文件路径
-const dataFile = path.join(__dirname, 'articles.json');
+// MongoDB 连接配置
+const MONGODB_URI = 'mongodb://localhost:27017';
+const DB_NAME = 'articleReaderDB';
+const COLLECTION_NAME = 'articles';
+
+let db;
+let articlesCollection;
 
 // 配置文件上传
 const upload = multer({ dest: 'uploads/' });
@@ -19,73 +25,102 @@ app.use(cors());
 app.use(bodyParser.json());
 app.use(express.static('public'));
 
-// 初始化数据文件和上传目录
-function initDataFile() {
-  if (!fs.existsSync(dataFile)) {
-    fs.writeFileSync(dataFile, JSON.stringify([], null, 2));
-  }
-  if (!fs.existsSync('uploads')) {
-    fs.mkdirSync('uploads');
-  }
-}
+// 处理 favicon 请求，避免 404 错误
+app.get('/favicon.ico', (req, res) => {
+  // 返回 204 No Content，或者你可以提供一个实际的 favicon 文件
+  res.status(204).end();
+});
 
-// 读取所有文章
-function readArticles() {
+// 连接 MongoDB
+async function connectDB() {
   try {
-    const data = fs.readFileSync(dataFile, 'utf-8');
-    return JSON.parse(data);
+    const client = new MongoClient(MONGODB_URI);
+    await client.connect();
+    console.log('成功连接到 MongoDB');
+    
+    db = client.db(DB_NAME);
+    articlesCollection = db.collection(COLLECTION_NAME);
+    
+    // 创建索引以提高查询性能
+    await articlesCollection.createIndex({ createdAt: -1 });
+    
+    // 确保上传目录存在
+    if (!fs.existsSync('uploads')) {
+      fs.mkdirSync('uploads');
+    }
+    
+    return client;
   } catch (error) {
-    console.error('读取数据文件错误:', error);
-    return [];
-  }
-}
-
-// 保存文章到文件
-function saveArticles(articles) {
-  try {
-    fs.writeFileSync(dataFile, JSON.stringify(articles, null, 2));
-  } catch (error) {
-    console.error('保存数据文件错误:', error);
+    console.error('MongoDB 连接错误:', error);
+    process.exit(1);
   }
 }
 
 // API 路由
 
 // 获取所有文章
-app.get('/api/articles', (req, res) => {
-  const articles = readArticles();
-  res.json(articles);
+app.get('/api/articles', async (req, res) => {
+  try {
+    // 按创建时间倒序排列
+    const articles = await articlesCollection
+      .find({})
+      .sort({ createdAt: -1 })
+      .toArray();
+    
+    // 将 _id 转换为 id 字符串以保持前端兼容性
+    const formattedArticles = articles.map(article => ({
+      id: article._id.toString(),
+      title: article.title,
+      content: article.content,
+      wordCount: article.wordCount,
+      createdAt: article.createdAt
+    }));
+    
+    res.json(formattedArticles);
+  } catch (error) {
+    console.error('获取文章错误:', error);
+    res.status(500).json({ error: '获取文章失败' });
+  }
 });
 
 // 添加新文章（通过文本）
-app.post('/api/articles', (req, res) => {
-  const { title, content } = req.body;
-  
-  if (!title || title.trim() === '') {
-    return res.status(400).json({ error: '标题不能为空' });
+app.post('/api/articles', async (req, res) => {
+  try {
+    const { title, content } = req.body;
+    
+    if (!title || title.trim() === '') {
+      return res.status(400).json({ error: '标题不能为空' });
+    }
+    
+    if (!content || content.trim() === '') {
+      return res.status(400).json({ error: '内容不能为空' });
+    }
+    
+    const newArticle = {
+      title: title.trim(),
+      content: content.trim(),
+      wordCount: content.trim().split(/\s+/).length,
+      createdAt: new Date().toISOString()
+    };
+    
+    // 插入单个文档
+    const result = await articlesCollection.insertOne(newArticle);
+    
+    // 返回插入的文章
+    const insertedArticle = {
+      id: result.insertedId.toString(),
+      ...newArticle
+    };
+    
+    res.status(201).json(insertedArticle);
+  } catch (error) {
+    console.error('添加文章错误:', error);
+    res.status(500).json({ error: '添加文章失败' });
   }
-  
-  if (!content || content.trim() === '') {
-    return res.status(400).json({ error: '内容不能为空' });
-  }
-  
-  const articles = readArticles();
-  const newArticle = {
-    id: Date.now(),
-    title: title.trim(),
-    content: content.trim(),
-    wordCount: content.trim().split(/\s+/).length,
-    createdAt: new Date().toISOString()
-  };
-  
-  articles.push(newArticle);
-  saveArticles(articles);
-  
-  res.status(201).json(newArticle);
 });
 
 // 通过文件上传添加文章
-app.post('/api/articles/upload', upload.single('file'), (req, res) => {
+app.post('/api/articles/upload', upload.single('file'), async (req, res) => {
   try {
     if (!req.file) {
       return res.status(400).json({ error: '请选择文件' });
@@ -103,19 +138,23 @@ app.post('/api/articles/upload', upload.single('file'), (req, res) => {
       return res.status(400).json({ error: '文件内容不能为空' });
     }
     
-    const articles = readArticles();
     const newArticle = {
-      id: Date.now(),
       title: title || req.file.originalname.replace('.txt', ''),
       content: content.trim(),
       wordCount: content.trim().split(/\s+/).length,
       createdAt: new Date().toISOString()
     };
     
-    articles.push(newArticle);
-    saveArticles(articles);
+    // 插入单个文档
+    const result = await articlesCollection.insertOne(newArticle);
     
-    res.status(201).json(newArticle);
+    // 返回插入的文章
+    const insertedArticle = {
+      id: result.insertedId.toString(),
+      ...newArticle
+    };
+    
+    res.status(201).json(insertedArticle);
   } catch (error) {
     console.error('文件上传错误:', error);
     res.status(500).json({ error: '文件上传失败' });
@@ -123,14 +162,16 @@ app.post('/api/articles/upload', upload.single('file'), (req, res) => {
 });
 
 // 获取单个文章（用于在新标签页显示）
-app.get('/article/:id', (req, res) => {
-  const { id } = req.params;
-  const articles = readArticles();
-  const article = articles.find(a => a.id === parseInt(id));
-  
-  if (!article) {
-    return res.status(404).send('<h1>文章未找到</h1>');
-  }
+app.get('/article/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    
+    // 查询单个文档
+    const article = await articlesCollection.findOne({ _id: new ObjectId(id) });
+    
+    if (!article) {
+      return res.status(404).send('<h1>文章未找到</h1>');
+    }
   
   // 生成 HTML 页面
   const html = `
@@ -246,28 +287,38 @@ app.get('/article/:id', (req, res) => {
   `;
   
   res.send(html);
+  } catch (error) {
+    console.error('获取文章详情错误:', error);
+    res.status(500).send('<h1>服务器错误</h1>');
+  }
 });
 
 // 删除文章
-app.delete('/api/articles/:id', (req, res) => {
-  const { id } = req.params;
-  
-  const articles = readArticles();
-  const index = articles.findIndex(a => a.id === parseInt(id));
-  
-  if (index === -1) {
-    return res.status(404).json({ error: '文章不存在' });
+app.delete('/api/articles/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    
+    // 删除单个文档
+    const result = await articlesCollection.deleteOne({ _id: new ObjectId(id) });
+    
+    if (result.deletedCount === 0) {
+      return res.status(404).json({ error: '文章不存在' });
+    }
+    
+    res.json({ message: '文章已删除', id });
+  } catch (error) {
+    console.error('删除文章错误:', error);
+    res.status(500).json({ error: '删除文章失败' });
   }
-  
-  const deletedArticle = articles.splice(index, 1)[0];
-  saveArticles(articles);
-  
-  res.json(deletedArticle);
 });
 
-// 初始化
-initDataFile();
+// 初始化并启动服务器
+async function startServer() {
+  await connectDB();
+  
+  app.listen(PORT, () => {
+    console.log(`服务器已启动，访问 http://localhost:${PORT}`);
+  });
+}
 
-app.listen(PORT, () => {
-  console.log(`服务器已启动，访问 http://localhost:${PORT}`);
-});
+startServer().catch(console.error);
