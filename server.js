@@ -122,6 +122,132 @@ app.post('/api/articles/upload', upload.single('file'), (req, res) => {
   }
 });
 
+// 获取单个文章（用于在新标签页显示）
+app.get('/article/:id', (req, res) => {
+  const { id } = req.params;
+  const articles = readArticles();
+  const article = articles.find(a => a.id === parseInt(id));
+  
+  if (!article) {
+    return res.status(404).send('<h1>文章未找到</h1>');
+  }
+  
+  // 生成 HTML 页面
+  const html = `
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>${article.title}</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/semantic-ui@2.4.2/dist/semantic.min.css">
+    <style>
+        body {
+            background-color: #f5f5f5;
+            padding: 40px 20px;
+        }
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+        }
+        .article-header {
+            background: white;
+            padding: 30px;
+            border-radius: 5px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .article-title {
+            font-size: 2.5em;
+            margin-bottom: 20px;
+            color: #2185d0;
+        }
+        .article-meta {
+            color: #666;
+            font-size: 1em;
+            padding: 15px 0;
+            border-top: 1px solid #eee;
+            border-bottom: 1px solid #eee;
+        }
+        .article-content {
+            background: white;
+            padding: 40px;
+            border-radius: 5px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            white-space: pre-wrap;
+            word-break: break-word;
+            line-height: 1.8;
+            font-size: 1.1em;
+            color: #333;
+        }
+        .back-button {
+            margin-bottom: 20px;
+        }
+        .delete-button {
+            margin-top: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="back-button">
+            <a href="/" class="ui button">
+                <i class="arrow left icon"></i>
+                返回首页
+            </a>
+            <button class="ui red button" onclick="deleteArticle()">
+                <i class="trash icon"></i>
+                删除文章
+            </button>
+        </div>
+        
+        <div class="article-header">
+            <h1 class="article-title">${article.title}</h1>
+            <div class="article-meta">
+                <i class="calendar icon"></i>
+                添加于: ${new Date(article.createdAt).toLocaleString('zh-CN')}
+                <span style="margin-left: 30px;">
+                    <i class="font icon"></i>
+                    词数: ${article.wordCount}
+                </span>
+            </div>
+        </div>
+        
+        <div class="article-content">${article.content.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</div>
+    </div>
+
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/semantic-ui@2.4.2/dist/semantic.min.js"></script>
+    <script>
+        async function deleteArticle() {
+            if (!confirm('确定要删除这篇文章吗？删除后将返回首页。')) {
+                return;
+            }
+            
+            try {
+                const response = await fetch('http://localhost:3000/api/articles/${id}', {
+                    method: 'DELETE'
+                });
+                
+                if (response.ok) {
+                    alert('文章已删除');
+                    window.location.href = '/';
+                } else {
+                    alert('删除失败');
+                }
+            } catch (error) {
+                console.error('删除错误:', error);
+                alert('删除失败');
+            }
+        }
+    </script>
+</body>
+</html>
+  `;
+  
+  res.send(html);
+});
+
 // 删除文章
 app.delete('/api/articles/:id', (req, res) => {
   const { id } = req.params;

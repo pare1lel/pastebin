@@ -85,7 +85,7 @@ function renderArticles(articles) {
   }
   
   container.innerHTML = articles.map(article => `
-    <div class="ui segment article-item" data-id="${article.id}" onclick="viewArticle(${article.id})">
+    <div class="ui segment article-item" data-id="${article.id}">
       <div class="article-title">${escapeHtml(article.title)}</div>
       <div class="article-preview">${escapeHtml(article.content)}</div>
       <div class="article-meta">
@@ -94,6 +94,16 @@ function renderArticles(articles) {
         <span style="margin-left: 20px;">
           <i class="font icon"></i>
           ${article.wordCount} 词
+        </span>
+        <span style="margin-left: 20px;">
+          <a href="/article/${article.id}" target="_blank" class="ui primary mini button" onclick="event.stopPropagation()">
+            <i class="external alternate icon"></i>
+            查看详情
+          </a>
+          <button class="ui red mini button" onclick="event.stopPropagation(); deleteArticle(${article.id})">
+            <i class="trash icon"></i>
+            删除
+          </button>
         </span>
       </div>
     </div>
@@ -182,44 +192,14 @@ async function addArticleByFile() {
   }
 }
 
-// 查看文章详情
-async function viewArticle(id) {
-  try {
-    const response = await fetch(`${API_URL}/articles`);
-    const articles = await response.json();
-    const article = articles.find(a => a.id === id);
-    
-    if (!article) return;
-    
-    currentArticleId = id;
-    document.getElementById('modalTitle').textContent = article.title;
-    document.getElementById('modalDate').textContent = formatDate(article.createdAt);
-    document.getElementById('modalWordCount').textContent = article.wordCount;
-    document.getElementById('modalContent').textContent = article.content;
-    
-    $('#articleModal').modal('show');
-  } catch (error) {
-    console.error('加载文章详情错误:', error);
-    showError('加载文章详情失败');
-  }
-}
-
-// 关闭模态框
-function closeModal() {
-  $('#articleModal').modal('hide');
-  currentArticleId = null;
-}
-
-// 从模态框删除文章
-async function deleteArticleFromModal() {
-  if (!currentArticleId) return;
-  
+// 删除文章
+async function deleteArticle(id) {
   if (!confirm('确定要删除这篇文章吗？')) {
     return;
   }
   
   try {
-    const response = await fetch(`${API_URL}/articles/${currentArticleId}`, {
+    const response = await fetch(`${API_URL}/articles/${id}`, {
       method: 'DELETE'
     });
     
@@ -228,7 +208,6 @@ async function deleteArticleFromModal() {
     }
     
     showSuccess('文章已删除');
-    closeModal();
     loadArticles();
   } catch (error) {
     console.error('删除文章错误:', error);
