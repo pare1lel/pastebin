@@ -18,7 +18,7 @@ async function checkLoginStatus() {
     
     if (response.ok) {
       const data = await response.json();
-      currentUser = data;
+      currentUser = data; // includes userId
       showMainInterface();
     } else {
       showAuthInterface();
@@ -83,7 +83,7 @@ async function login() {
     const data = await response.json();
     
     if (response.ok) {
-      currentUser = { username: data.username };
+      currentUser = { username: data.username, userId: data.userId };
       showSuccess('登录成功');
       showMainInterface();
     } else {
@@ -129,7 +129,7 @@ async function register() {
     const data = await response.json();
     
     if (response.ok) {
-      currentUser = { username: data.username };
+      currentUser = { username: data.username, userId: data.userId };
       showSuccess('注册成功');
       showMainInterface();
     } else {
@@ -243,10 +243,19 @@ function renderArticles(articles) {
         删除
       </button>
     ` : '';
+    const publishButton = isAuthor && article.isPrivate ? `
+      <button class="ui orange mini button" onclick="event.stopPropagation(); publishArticle('${article.id}')">
+        <i class="unlock icon"></i>
+        公开
+      </button>
+    ` : '';
+    const privacyBadge = article.isPrivate
+      ? '<span class="ui red mini label">私有</span>'
+      : '<span class="ui green mini label">公开</span>';
     
     return `
       <div class="ui segment article-item" data-id="${article.id}">
-        <div class="article-title">${escapeHtml(article.title)}</div>
+  <div class="article-title">${escapeHtml(article.title)} ${privacyBadge}</div>
         <div class="article-preview">${escapeHtml(article.content)}</div>
         <div class="article-meta">
           ${article.author ? `<i class="user icon"></i>${escapeHtml(article.author)}` : '<i class="user outline icon"></i>匿名'}
@@ -259,22 +268,30 @@ function renderArticles(articles) {
             ${article.wordCount} 词
           </span>
           <span style="margin-left: 20px;">
-            <a href="/article/${article.id}" class="ui primary mini button" onclick="event.stopPropagation()">
-              <i class="external alternate icon"></i>
-              查看详情
-            </a>
-            ${deleteButton}
+            ${deleteButton} ${publishButton}
           </span>
         </div>
       </div>
     `;
   }).join('');
+
+  // 让整块文章卡片都可点击跳转到详情
+  const items = container.querySelectorAll('.article-item');
+  items.forEach(item => {
+    item.addEventListener('click', () => {
+      const id = item.getAttribute('data-id');
+      if (id) {
+        window.location.href = `/article/${id}`;
+      }
+    });
+  });
 }
 
 // 通过文本添加文章
 async function addArticleByText() {
   const title = document.getElementById('articleTitle').value.trim();
   const content = document.getElementById('articleContent').value.trim();
+  const isPrivate = document.getElementById('textPrivateCheckbox').checked;
   
   if (!title) {
     showWarning('请输入文章标题');
@@ -293,7 +310,7 @@ async function addArticleByText() {
         'Content-Type': 'application/json'
       },
       credentials: 'include',
-      body: JSON.stringify({ title, content })
+      body: JSON.stringify({ title, content, isPrivate })
     });
     
     if (!response.ok) {
@@ -315,6 +332,7 @@ async function addArticleByText() {
 async function addArticleByFile() {
   const fileInput = document.getElementById('fileInput');
   const title = document.getElementById('fileArticleTitle').value.trim();
+  const isPrivate = document.getElementById('filePrivateCheckbox').checked;
   
   if (fileInput.files.length === 0) {
     showWarning('请选择要上传的文件');
@@ -334,6 +352,7 @@ async function addArticleByFile() {
     if (title) {
       formData.append('title', title);
     }
+    formData.append('isPrivate', isPrivate);
     
     const response = await fetch(`${API_URL}/articles/upload`, {
       method: 'POST',
@@ -354,6 +373,28 @@ async function addArticleByFile() {
   } catch (error) {
     console.error('上传文件错误:', error);
     showError(error.message || '上传文件失败');
+  }
+}
+
+// 设为公开
+async function publishArticle(id) {
+  if (!confirm('确定将该私有文章设为公开吗？')) {
+    return;
+  }
+  try {
+    const response = await fetch(`${API_URL}/articles/${id}/publish`, {
+      method: 'PATCH',
+      credentials: 'include'
+    });
+    const data = await response.json();
+    if (!response.ok) {
+      throw new Error(data.error || '操作失败');
+    }
+    showSuccess('文章已设为公开');
+    loadArticles();
+  } catch (error) {
+    console.error('设为公开错误:', error);
+    showError(error.message || '设为公开失败');
   }
 }
 

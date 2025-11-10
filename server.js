@@ -123,7 +123,8 @@ app.post('/api/register', async (req, res) => {
     
     res.status(201).json({ 
       message: '注册成功',
-      username: username.trim()
+      username: username.trim(),
+      userId: req.session.userId
     });
   } catch (error) {
     console.error('注册错误:', error);
@@ -158,7 +159,8 @@ app.post('/api/login', async (req, res) => {
     
     res.json({ 
       message: '登录成功',
-      username: user.username
+      username: user.username,
+      userId: req.session.userId
     });
   } catch (error) {
     console.error('登录错误:', error);
@@ -191,9 +193,15 @@ app.get('/api/current-user', (req, res) => {
 // 获取所有文章
 app.get('/api/articles', async (req, res) => {
   try {
+    // 仅返回公开文章，或当前用户自己的私有文章；没有 isPrivate 字段的旧文章视为公开
+    const userId = req.session.userId;
+    const visibilityFilter = userId
+      ? { $or: [ { isPrivate: { $ne: true } }, { authorId: userId } ] }
+      : { isPrivate: { $ne: true } };
+
     // 按创建时间倒序排列
     const articles = await articlesCollection
-      .find({})
+      .find(visibilityFilter)
       .sort({ createdAt: -1 })
       .toArray();
     
@@ -205,7 +213,8 @@ app.get('/api/articles', async (req, res) => {
       wordCount: article.wordCount,
       createdAt: article.createdAt,
       author: article.author,
-      authorId: article.authorId
+      authorId: article.authorId,
+      isPrivate: !!article.isPrivate
     }));
     
     res.json(formattedArticles);
@@ -219,6 +228,7 @@ app.get('/api/articles', async (req, res) => {
 app.post('/api/articles', requireAuth, async (req, res) => {
   try {
     const { title, content } = req.body;
+    const isPrivate = req.body.isPrivate === true || req.body.isPrivate === 'true';
     
     if (!title || title.trim() === '') {
       return res.status(400).json({ error: '标题不能为空' });
@@ -234,7 +244,8 @@ app.post('/api/articles', requireAuth, async (req, res) => {
       wordCount: content.trim().split(/\s+/).length,
       author: req.session.username,
       authorId: req.session.userId,
-      createdAt: new Date().toISOString()
+      createdAt: new Date().toISOString(),
+      isPrivate: !!isPrivate
     };
     
     // 插入单个文档
@@ -261,6 +272,7 @@ app.post('/api/articles/upload', requireAuth, upload.single('file'), async (req,
     }
 
     const { title } = req.body;
+    const isPrivate = req.body.isPrivate === true || req.body.isPrivate === 'true';
     
     // 读取文件内容
     const content = fs.readFileSync(req.file.path, 'utf-8');
@@ -278,7 +290,8 @@ app.post('/api/articles/upload', requireAuth, upload.single('file'), async (req,
       wordCount: content.trim().split(/\s+/).length,
       author: req.session.username,
       authorId: req.session.userId,
-      createdAt: new Date().toISOString()
+      createdAt: new Date().toISOString(),
+      isPrivate: !!isPrivate
     };
     
     // 插入单个文档
@@ -307,6 +320,13 @@ app.get('/article/:id', async (req, res) => {
     
     if (!article) {
       return res.status(404).send('<h1>文章未找到</h1>');
+    }
+
+    // 访问权限校验：私有文章仅作者可见
+    const isAuthor = req.session.userId && req.session.userId === article.authorId;
+    const isPublic = !article.isPrivate;
+    if (!isPublic && !isAuthor) {
+      return res.status(403).send('<h1>无权访问该私有文章</h1>');
     }
   
   // 渲染 Markdown 为 HTML 并清理（防 XSS）
@@ -379,6 +399,7 @@ app.get('/article/:id', async (req, res) => {
         .delete-button {
             margin-top: 20px;
         }
+    .privacy-label { margin-left: 10px; }
     </style>
 </head>
 <body>
@@ -388,11 +409,16 @@ app.get('/article/:id', async (req, res) => {
                 <i class="arrow left icon"></i>
                 返回首页
             </a>
-            ${req.session.userId && req.session.userId === article.authorId ? `
+      ${isAuthor ? `
             <button class="ui red button" onclick="deleteArticle()">
                 <i class="trash icon"></i>
                 删除文章
             </button>
+      ${article.isPrivate ? `
+      <button class="ui orange button" onclick="publishArticle()">
+        <i class="unlock icon"></i>
+        设为公开
+      </button>` : ''}
             ` : ''}
         </div>
         
@@ -408,6 +434,10 @@ app.get('/article/:id', async (req, res) => {
                     <i class="font icon"></i>
                     词数: ${article.wordCount}
                 </span>
+        <span style="margin-left: 20px;">
+          <i class="lock icon"></i>
+          ${article.isPrivate ? '私有' : '公开'}
+        </span>
             </div>
         </div>
         
@@ -424,7 +454,8 @@ app.get('/article/:id', async (req, res) => {
             
             try {
                 const response = await fetch('http://localhost:3000/api/articles/${id}', {
-                    method: 'DELETE'
+          method: 'DELETE',
+          credentials: 'include'
                 });
                 
                 if (response.ok) {
@@ -438,6 +469,28 @@ app.get('/article/:id', async (req, res) => {
                 alert('删除失败');
             }
         }
+
+    async function publishArticle() {
+      if (!confirm('确定将此私有文章设为公开吗？')) {
+        return;
+      }
+      try {
+        const response = await fetch('http://localhost:3000/api/articles/${id}/publish', {
+          method: 'PATCH',
+          credentials: 'include'
+        });
+        if (response.ok) {
+          alert('文章已设为公开');
+          location.reload();
+        } else {
+          const data = await response.json().catch(() => ({}));
+          alert(data.error || '操作失败');
+        }
+      } catch (e) {
+        console.error('设为公开错误:', e);
+        alert('操作失败');
+      }
+    }
     </script>
 </body>
 </html>
@@ -474,6 +527,28 @@ app.delete('/api/articles/:id', requireAuth, async (req, res) => {
   } catch (error) {
     console.error('删除文章错误:', error);
     res.status(500).json({ error: '删除文章失败' });
+  }
+});
+
+// 将私有文章设为公开
+app.patch('/api/articles/:id/publish', requireAuth, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const article = await articlesCollection.findOne({ _id: new ObjectId(id) });
+    if (!article) {
+      return res.status(404).json({ error: '文章不存在' });
+    }
+    if (article.authorId !== req.session.userId) {
+      return res.status(403).json({ error: '无权修改此文章' });
+    }
+    if (!article.isPrivate) {
+      return res.status(400).json({ error: '文章已是公开状态' });
+    }
+    await articlesCollection.updateOne({ _id: new ObjectId(id) }, { $set: { isPrivate: false } });
+    res.json({ message: '已设为公开', id });
+  } catch (error) {
+    console.error('设为公开错误:', error);
+    res.status(500).json({ error: '操作失败' });
   }
 });
 
