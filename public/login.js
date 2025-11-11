@@ -36,8 +36,16 @@ async function login() {
     const data = await response.json();
     
     if (response.ok) {
-      showSuccess('登录成功，正在跳转...');
-      window.location.href = '/';
+      showSuccess('登录成功，正在返回...');
+      setTimeout(() => {
+        // 如果有来源页面，跳转到来源页面，否则跳转到主页
+        const referrer = document.referrer;
+        if (referrer && !referrer.includes('/login')) {
+          window.location.href = referrer;
+        } else {
+          window.location.href = '/';
+        }
+      }, 500);
     } else {
       showError(data.error || '登录失败');
     }
@@ -81,8 +89,16 @@ async function register() {
     const data = await response.json();
     
     if (response.ok) {
-      showSuccess('注册成功，正在跳转...');
-      window.location.href = '/';
+      showSuccess('注册成功，正在返回...');
+      setTimeout(() => {
+        // 如果有来源页面，跳转到来源页面，否则跳转到主页
+        const referrer = document.referrer;
+        if (referrer && !referrer.includes('/login')) {
+          window.location.href = referrer;
+        } else {
+          window.location.href = '/';
+        }
+      }, 500);
     } else {
       showError(data.error || '注册失败');
     }

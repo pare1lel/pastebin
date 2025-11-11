@@ -11,6 +11,7 @@
             padding: 40px 20px;
         }
         .container {
+			position: relative;
             max-width: 1080px;
             margin: 0 auto;
         }
@@ -122,16 +123,28 @@
         }
         
         .note-editor {
-			margin-top: 15px;
+            margin-top: 15px;
             padding: 15px;
             background-color: #f8f9fa;
             border-radius: 5px;
             border: 1px solid #dee2e6;
         }
+        
+        .user-info {
+            position: absolute;
+            top: 0px;
+            right: 0px;
+            z-index: 100;
+        }
     </style>
 </head>
 <body>
     <div class="container">
+        <!-- 用户信息栏 -->
+        <div class="user-info" id="userInfo">
+            <!-- 内容将由 JavaScript 动态填充 -->
+        </div>
+        
         <div class="back-button">
             <a href="/" class="ui button">
                 <i class="arrow left icon"></i>
@@ -247,6 +260,7 @@
         
         // 页面加载时获取所有笔记
         $(document).ready(async function() {
+            await checkUserStatus();
             await loadAnnotations();
             setupSelectionListener();
             
@@ -302,6 +316,72 @@
                 }
             });
         });
+
+        // 检查用户登录状态
+        async function checkUserStatus() {
+            try {
+                const response = await fetch('http://localhost:3000/api/current-user', {
+                    credentials: 'include'
+                });
+                
+                const userInfoDiv = document.getElementById('userInfo');
+                
+                if (response.ok) {
+                    const data = await response.json();
+                    // 已登录，显示用户名和登出按钮
+                    userInfoDiv.innerHTML = `
+                        <div class="ui basic segment" style="padding: 0;">
+                            <span style="margin-right: 30px;">
+                                <i class="user icon"></i>
+                                ${data.username}
+                            </span>
+                            <button class="ui button" onclick="logout()">
+                                登出
+                            </button>
+                        </div>
+                    `;
+                } else {
+                    // 未登录，显示登录/注册按钮
+                    userInfoDiv.innerHTML = `
+                        <div class="ui basic segment" style="padding: 0;">
+                            <a href="/login" class="ui primary button">
+                                登录/注册
+                            </a>
+                        </div>
+                    `;
+                }
+            } catch (error) {
+                console.error('检查用户状态错误:', error);
+                // 出错时显示登录按钮
+                document.getElementById('userInfo').innerHTML = `
+                    <div class="ui basic segment" style="padding: 0;">
+                        <a href="/login" class="ui primary button">
+                            <i class="sign in icon"></i>
+                            登录/注册
+                        </a>
+                    </div>
+                `;
+            }
+        }
+
+        // 登出
+        async function logout() {
+            try {
+                const response = await fetch('http://localhost:3000/api/logout', {
+                    method: 'POST',
+                    credentials: 'include'
+                });
+                
+                if (response.ok) {
+                    window.location.href = '/';
+                } else {
+                    alert('登出失败');
+                }
+            } catch (error) {
+                console.error('登出错误:', error);
+                alert('登出失败');
+            }
+        }
 
         // 加载笔记
         async function loadAnnotations() {

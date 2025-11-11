@@ -418,8 +418,11 @@ app.delete('/api/articles/:id', requireAuth, async (req, res) => {
       return res.status(403).json({ error: '无权删除此文章' });
     }
     
-    // 删除文档
+    // 删除文章
     const result = await articlesCollection.deleteOne({ _id: new ObjectId(id) });
+    
+    // 删除该文章的所有笔记
+    await annotationsCollection.deleteMany({ articleId: id });
     
     res.json({ message: '文章已删除', id });
   } catch (error) {
