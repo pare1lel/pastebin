@@ -18,10 +18,12 @@ const MONGODB_URI = 'mongodb://localhost:27017';
 const DB_NAME = 'articleReaderDB';
 const COLLECTION_NAME = 'articles';
 const USERS_COLLECTION = 'users';
+const ANNOTATIONS_COLLECTION = 'annotations';
 
 let db;
 let articlesCollection;
 let usersCollection;
+let annotationsCollection;
 
 // 配置文件上传
 const upload = multer({ dest: 'uploads/' });
@@ -59,10 +61,12 @@ async function connectDB() {
     db = client.db(DB_NAME);
     articlesCollection = db.collection(COLLECTION_NAME);
     usersCollection = db.collection(USERS_COLLECTION);
+    annotationsCollection = db.collection(ANNOTATIONS_COLLECTION);
     
     // 创建索引以提高查询性能
     await articlesCollection.createIndex({ createdAt: -1 });
     await usersCollection.createIndex({ username: 1 }, { unique: true });
+    await annotationsCollection.createIndex({ articleId: 1, userId: 1 });
     
     // 确保上传目录存在
     if (!fs.existsSync('uploads')) {
@@ -359,68 +363,12 @@ app.get('/article/:id', async (req, res) => {
     }
   });
 
-  // 生成 HTML 页面
-  const html = `
-<!DOCTYPE html>
-<html lang="zh-CN">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>${article.title}</title>
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/semantic-ui@2.4.2/dist/semantic.min.css">
-    <style>
-        body {
-            background-color: #f5f5f5;
-            padding: 40px 20px;
-        }
-        .container {
-            max-width: 900px;
-            margin: 0 auto;
-        }
-        .article-header {
-            background: white;
-            padding: 30px;
-            border-radius: 5px;
-            margin-bottom: 20px;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-        }
-        .article-title {
-            font-size: 2.5em;
-            margin-bottom: 20px;
-            color: #2185d0;
-        }
-        .article-meta {
-            color: #666;
-            font-size: 1em;
-            padding: 15px 0;
-            border-top: 1px solid #eee;
-            border-bottom: 1px solid #eee;
-        }
-        .article-content {
-            background: white;
-            padding: 40px;
-            border-radius: 5px;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-            font-size: 1.1em;
-            color: #333;
-        }
-        .back-button {
-            margin-bottom: 20px;
-        }
-        .delete-button {
-            margin-top: 20px;
-        }
-    .privacy-label { margin-left: 10px; }
-    </style>
-</head>
-<body>
-    <div class="container">
-        <div class="back-button">
-            <a href="/" class="ui button">
-                <i class="arrow left icon"></i>
-                返回首页
-            </a>
-      ${isAuthor ? `
+  // 读取并渲染 HTML 模板
+  const templatePath = path.join(__dirname, 'article-template.html');
+  let html = fs.readFileSync(templatePath, 'utf-8');
+
+  // 准备动态内容
+  const authorButtons = isAuthor ? `
             <button class="ui red button" onclick="deleteArticle()">
                 <i class="trash icon"></i>
                 删除文章
@@ -430,79 +378,21 @@ app.get('/article/:id', async (req, res) => {
         <i class="unlock icon"></i>
         设为公开
       </button>` : ''}
-            ` : ''}
-        </div>
-        
-        <div class="article-header">
-            <h1 class="article-title">${article.title}</h1>
-            <div class="article-meta">
-                ${article.author ? `<i class="user icon"></i>作者: ${article.author}` : ''}
-                <span style="margin-left: 20px;">
-                    <i class="calendar icon"></i>
-                    添加于: ${new Date(article.createdAt).toLocaleString('zh-CN')}
-                </span>
-                <span style="margin-left: 20px;">
-                    <i class="font icon"></i>
-                    词数: ${article.wordCount}
-                </span>          
-          ${article.isPrivate ? '<span style="margin-left: 20px;"><i class="lock icon"></i>私有</span>' : ''}
-            </div>
-        </div>
-        
-  <div class="article-content">${safeHtml}</div>
-    </div>
+            ` : '';
 
-    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/semantic-ui@2.4.2/dist/semantic.min.js"></script>
-    <script>
-        async function deleteArticle() {
-            if (!confirm('确定要删除这篇文章吗？删除后将返回首页。')) {
-                return;
-            }
-            
-            try {
-                const response = await fetch('http://localhost:3000/api/articles/${id}', {
-          method: 'DELETE',
-          credentials: 'include'
-                });
-                
-                if (response.ok) {
-                    alert('文章已删除');
-                    window.location.href = '/';
-                } else {
-                    alert('删除失败');
-                }
-            } catch (error) {
-                console.error('删除错误:', error);
-                alert('删除失败');
-            }
-        }
+  const authorInfo = article.author ? `<i class="user icon"></i>作者: ${article.author}` : '';
+  const privacyLabel = article.isPrivate ? '<span style="margin-left: 20px;"><i class="lock icon"></i>私有</span>' : '';
 
-    async function publishArticle() {
-      if (!confirm('确定将此私有文章设为公开吗？')) {
-        return;
-      }
-      try {
-        const response = await fetch('http://localhost:3000/api/articles/${id}/publish', {
-          method: 'PATCH',
-          credentials: 'include'
-        });
-        if (response.ok) {
-          alert('文章已设为公开');
-          location.reload();
-        } else {
-          const data = await response.json().catch(() => ({}));
-          alert(data.error || '操作失败');
-        }
-      } catch (e) {
-        console.error('设为公开错误:', e);
-        alert('操作失败');
-      }
-    }
-    </script>
-</body>
-</html>
-  `;
+  // 替换模板占位符
+  html = html
+    .replace(/{{TITLE}}/g, article.title)
+    .replace(/{{AUTHOR_BUTTONS}}/g, authorButtons)
+    .replace(/{{AUTHOR_INFO}}/g, authorInfo)
+    .replace(/{{CREATED_AT}}/g, new Date(article.createdAt).toLocaleString('zh-CN'))
+    .replace(/{{WORD_COUNT}}/g, article.wordCount)
+    .replace(/{{PRIVACY_LABEL}}/g, privacyLabel)
+    .replace(/{{CONTENT}}/g, safeHtml)
+    .replace(/{{ARTICLE_ID}}/g, id);
   
   res.send(html);
   } catch (error) {
@@ -557,6 +447,166 @@ app.patch('/api/articles/:id/publish', requireAuth, async (req, res) => {
   } catch (error) {
     console.error('设为公开错误:', error);
     res.status(500).json({ error: '操作失败' });
+  }
+});
+
+// ============ 笔记相关 API ============
+
+// 获取文章的所有笔记（所有用户可见，包括未登录用户）
+app.get('/api/articles/:articleId/annotations', async (req, res) => {
+  try {
+    const { articleId } = req.params;
+    const currentUserId = req.session.userId; // 可能为 undefined（未登录）
+    
+    // 获取该文章的所有笔记，按编号排序
+    const annotations = await annotationsCollection
+      .find({ articleId })
+      .sort({ annotationNumber: 1 })
+      .toArray();
+    
+    const formattedAnnotations = annotations.map(ann => ({
+      id: ann._id.toString(),
+      articleId: ann.articleId,
+      userId: ann.userId,
+      username: ann.username,
+      annotationNumber: ann.annotationNumber,
+      selectedText: ann.selectedText,
+      startOffset: ann.startOffset,
+      endOffset: ann.endOffset,
+      notes: ann.notes,
+      createdAt: ann.createdAt,
+      updatedAt: ann.updatedAt,
+      isOwner: currentUserId && currentUserId === ann.userId // 是否是当前用户创建的
+    }));
+    
+    res.json(formattedAnnotations);
+  } catch (error) {
+    console.error('获取笔记错误:', error);
+    res.status(500).json({ error: '获取笔记失败' });
+  }
+});
+
+// 创建新笔记
+app.post('/api/articles/:articleId/annotations', requireAuth, async (req, res) => {
+  try {
+    const { articleId } = req.params;
+    const userId = req.session.userId;
+    const username = req.session.username;
+    const { selectedText, startOffset, endOffset, notes } = req.body;
+    
+    if (!selectedText || !notes || notes.length === 0) {
+      return res.status(400).json({ error: '选中的文字和笔记内容不能为空' });
+    }
+    
+    // 获取该文章所有笔记的最大编号（所有用户共享编号）
+    const lastAnnotation = await annotationsCollection
+      .findOne({ articleId }, { sort: { annotationNumber: -1 } });
+    
+    const annotationNumber = lastAnnotation ? lastAnnotation.annotationNumber + 1 : 1;
+    
+    const newAnnotation = {
+      articleId,
+      userId,
+      username,
+      annotationNumber,
+      selectedText,
+      startOffset,
+      endOffset,
+      notes, // [{title, content}, ...]
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    };
+    
+    const result = await annotationsCollection.insertOne(newAnnotation);
+    
+    res.status(201).json({
+      id: result.insertedId.toString(),
+      ...newAnnotation
+    });
+  } catch (error) {
+    console.error('创建笔记错误:', error);
+    res.status(500).json({ error: '创建笔记失败' });
+  }
+});
+
+// 更新笔记
+app.put('/api/annotations/:id', requireAuth, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const userId = req.session.userId;
+    const { notes } = req.body;
+    
+    if (!notes || notes.length === 0) {
+      return res.status(400).json({ error: '笔记内容不能为空' });
+    }
+    
+    const annotation = await annotationsCollection.findOne({ _id: new ObjectId(id) });
+    
+    if (!annotation) {
+      return res.status(404).json({ error: '笔记不存在' });
+    }
+    
+    if (annotation.userId !== userId) {
+      return res.status(403).json({ error: '无权修改此笔记' });
+    }
+    
+    await annotationsCollection.updateOne(
+      { _id: new ObjectId(id) },
+      { 
+        $set: { 
+          notes,
+          updatedAt: new Date().toISOString()
+        } 
+      }
+    );
+    
+    res.json({ message: '笔记已更新', id });
+  } catch (error) {
+    console.error('更新笔记错误:', error);
+    res.status(500).json({ error: '更新笔记失败' });
+  }
+});
+
+// 删除笔记
+app.delete('/api/annotations/:id', requireAuth, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const userId = req.session.userId;
+    
+    const annotation = await annotationsCollection.findOne({ _id: new ObjectId(id) });
+    
+    if (!annotation) {
+      return res.status(404).json({ error: '笔记不存在' });
+    }
+    
+    if (annotation.userId !== userId) {
+      return res.status(403).json({ error: '无权删除此笔记' });
+    }
+    
+    const deletedNumber = annotation.annotationNumber;
+    
+    await annotationsCollection.deleteOne({ _id: new ObjectId(id) });
+    
+    // 重新编号该文章的所有笔记（所有用户的笔记都重新编号）
+    const remainingAnnotations = await annotationsCollection
+      .find({ articleId: annotation.articleId })
+      .sort({ annotationNumber: 1 })
+      .toArray();
+    
+    // 只需要更新编号大于被删除笔记的那些笔记
+    for (const ann of remainingAnnotations) {
+      if (ann.annotationNumber > deletedNumber) {
+        await annotationsCollection.updateOne(
+          { _id: ann._id },
+          { $set: { annotationNumber: ann.annotationNumber - 1 } }
+        );
+      }
+    }
+    
+    res.json({ message: '笔记已删除', id });
+  } catch (error) {
+    console.error('删除笔记错误:', error);
+    res.status(500).json({ error: '删除笔记失败' });
   }
 });
 

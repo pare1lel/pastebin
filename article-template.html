@@ -1,0 +1,753 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{TITLE}}</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/semantic-ui@2.4.2/dist/semantic.min.css">
+    <style>
+        body {
+            background-color: #f5f5f5;
+            padding: 40px 20px;
+        }
+        .container {
+            max-width: 1080px;
+            margin: 0 auto;
+        }
+        .article-header {
+            background: white;
+            padding: 30px;
+            border-radius: 5px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .article-title {
+            font-size: 2.5em;
+            margin-bottom: 20px;
+            color: #2185d0;
+        }
+        .article-meta {
+            color: #666;
+            font-size: 1em;
+            padding: 15px 0;
+            border-top: 1px solid #eee;
+            border-bottom: 1px solid #eee;
+        }
+        .article-content {
+            background: white;
+            padding: 30px;
+            border-radius: 5px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            font-size: 1.1em;
+            color: #333;
+            position: relative;
+            user-select: text;
+        }
+        .back-button {
+            margin-bottom: 20px;
+        }
+        .delete-button {
+            margin-top: 20px;
+        }
+        .privacy-label { margin-left: 10px; }
+        
+        /* 笔记相关样式 */
+        .annotation-button {
+            position: fixed;
+            z-index: 1000;
+            display: none;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.2s;
+        }
+        
+        .annotation-button.show {
+            display: block;
+            opacity: 1;
+            pointer-events: auto;
+        }
+        
+        .annotation-marker {
+            background-color: #fff3cd;
+            cursor: pointer;
+            position: relative;
+        }
+        
+        .annotation-marker:hover {
+            background-color: #ffe69c;
+        }
+        
+        .annotation-number {
+            display: inline-block;
+            background-color: #2185d0;
+            color: white;
+            border-radius: 50%;
+            width: 20px;
+            height: 20px;
+            line-height: 20px;
+            text-align: center;
+            font-size: 12px;
+            margin-left: 3px;
+            vertical-align: super;
+            cursor: pointer;
+            font-weight: bold;
+        }
+        
+        .annotation-number:hover {
+            background-color: #1678c2;
+        }
+        
+        .note-pair {
+            margin-top: 15px;
+            padding: 15px;
+            background-color: #f8f9fa;
+            border-radius: 5px;
+            border-left: 3px solid #2185d0;
+        }
+        
+        .note-pair h4 {
+            margin-top: 0;
+            color: #2185d0;
+        }
+        
+        .note-content {
+            margin-top: 10px;
+        }
+        
+        .selected-text-display {
+            padding: 15px;
+            background-color: #fff3cd;
+            border-radius: 5px;
+            border-left: 3px solid #ffc107;
+        }
+        
+        .note-editor {
+			margin-top: 15px;
+            padding: 15px;
+            background-color: #f8f9fa;
+            border-radius: 5px;
+            border: 1px solid #dee2e6;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="back-button">
+            <a href="/" class="ui button">
+                <i class="arrow left icon"></i>
+                返回首页
+            </a>
+            {{AUTHOR_BUTTONS}}
+        </div>
+        
+        <div class="article-header">
+            <h1 class="article-title">{{TITLE}}</h1>
+            <div class="article-meta">
+                {{AUTHOR_INFO}}
+                <span style="margin-left: 20px;">
+                    <i class="calendar icon"></i>
+                    添加于: {{CREATED_AT}}
+                </span>
+                <span style="margin-left: 20px;">
+                    <i class="font icon"></i>
+                    词数: {{WORD_COUNT}}
+                </span>
+                {{PRIVACY_LABEL}}
+            </div>
+        </div>
+        
+        <div class="article-content" id="articleContent">{{CONTENT}}</div>
+        
+        <!-- 添加笔记按钮（初始隐藏） -->
+        <button class="ui primary button annotation-button" id="addAnnotationBtn">
+            <i class="sticky note icon"></i>
+            添加笔记
+        </button>
+    </div>
+
+    <!-- 添加笔记的模态框 -->
+    <div class="ui modal" id="addAnnotationModal">
+        <i class="close icon"></i>
+        <div class="header">
+            <i class="sticky note icon"></i>
+            添加笔记
+        </div>
+        <div class="content">
+            <div class="selected-text-display">
+                <strong>选中的文字：</strong>
+                <p id="selectedTextDisplay"></p>
+            </div>
+            
+            <div id="notePairsContainer"></div>
+            
+            <button class="ui button" onclick="addNotePair()" style="margin-top: 15px;">
+                <i class="plus icon"></i>
+                添加一条笔记
+            </button>
+        </div>
+        <div class="actions">
+            <div class="ui black deny button">
+                取消
+            </div>
+            <div class="ui positive right labeled icon button" onclick="saveAnnotation()">
+                保存
+                <i class="checkmark icon"></i>
+            </div>
+        </div>
+    </div>
+
+    <!-- 查看笔记的模态框 -->
+    <div class="ui modal" id="viewAnnotationModal">
+        <i class="close icon"></i>
+        <div class="header">
+            <i class="sticky note outline icon"></i>
+            笔记 #<span id="viewAnnotationNumber"></span>
+        </div>
+        <div class="content">
+            <div class="selected-text-display">
+                <strong>选中的文字：</strong>
+                <p id="viewSelectedText"></p>
+                <div style="margin-top: 10px; color: #666; font-size: 0.9em;">
+                    <i class="user icon"></i>
+                    <span id="viewAnnotationAuthor"></span>
+                    <span style="margin-left: 15px;">
+                        <i class="clock icon"></i>
+                        上次修改: <span id="viewAnnotationUpdated"></span>
+                    </span>
+                </div>
+            </div>
+            
+            <div id="viewNotesContainer"></div>
+        </div>
+        <div class="actions">
+            <div id="annotationOwnerButtons" style="display: none;">
+                <div class="ui red button" onclick="deleteCurrentAnnotation()">
+                    <i class="trash icon"></i>
+                    删除
+                </div>
+                <div class="ui button" onclick="editCurrentAnnotation()" style="margin-left: .75em;">
+                    <i class="edit icon"></i>
+                    编辑
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/semantic-ui@2.4.2/dist/semantic.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <script>
+        const articleId = '{{ARTICLE_ID}}';
+        let annotations = [];
+        let currentSelection = null;
+        let currentAnnotationId = null;
+        let notePairCounter = 0;
+        let isEditingAnnotation = false; // 标志：是否正在编辑笔记
+        let isSaving = false; // 标志：是否正在保存（保存时不需要确认关闭）
+        
+        // 页面加载时获取所有笔记
+        $(document).ready(async function() {
+            await loadAnnotations();
+            setupSelectionListener();
+            
+            // 监听模态框关闭事件，重置状态
+            $('#addAnnotationModal').modal({
+                closable: false, // 禁用点击外部关闭
+                onDeny: function() {
+                    // 点击取消按钮时确认（保存时不需要确认）
+                    if (isSaving) {
+                        return true; // 正在保存，直接允许关闭
+                    }
+                    if (confirm('您有未保存的笔记内容，确定要退出吗？')) {
+                        if (!isEditingAnnotation) {
+                            currentAnnotationId = null;
+                        }
+                        isEditingAnnotation = false;
+                        return true; // 允许关闭
+                    }
+                    return false; // 阻止关闭
+                },
+                onHidden: function() {
+                    if (!isEditingAnnotation) {
+                        currentAnnotationId = null;
+                    }
+                    isEditingAnnotation = false;
+                    isSaving = false; // 重置保存标志
+                }
+            });
+            
+            $('#viewAnnotationModal').modal({
+                onHidden: function() {
+                    if (!isEditingAnnotation) {
+                        currentAnnotationId = null;
+                    }
+                }
+            });
+            
+            // 为添加笔记模态框的关闭图标添加确认
+            $('#addAnnotationModal .close.icon').on('click', function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                // 保存时不需要确认
+                if (isSaving) {
+                    $('#addAnnotationModal').modal('hide');
+                    return;
+                }
+                if (confirm('您有未保存的笔记内容，确定要退出吗？')) {
+                    if (!isEditingAnnotation) {
+                        currentAnnotationId = null;
+                    }
+                    isEditingAnnotation = false;
+                    $('#addAnnotationModal').modal('hide');
+                }
+            });
+        });
+
+        // 加载笔记
+        async function loadAnnotations() {
+            try {
+                const response = await fetch(`http://localhost:3000/api/articles/${articleId}/annotations`, {
+                    credentials: 'include'
+                });
+                
+                if (response.ok) {
+                    annotations = await response.json();
+                    renderAnnotations();
+                }
+            } catch (error) {
+                console.error('加载笔记错误:', error);
+            }
+        }
+
+        // 渲染笔记到文章内容中
+        function renderAnnotations() {
+            const content = document.getElementById('articleContent');
+            
+            // 按照位置倒序排序，从后往前插入，避免位置偏移
+            const sortedAnnotations = [...annotations].sort((a, b) => b.endOffset - a.endOffset);
+            
+            // 遍历所有文本节点并插入笔记标记
+            sortedAnnotations.forEach(ann => {
+                insertAnnotationMarker(content, ann.endOffset, ann.id, ann.annotationNumber);
+            });
+        }
+        
+        // 在指定文本偏移量处插入笔记标记
+        function insertAnnotationMarker(container, offset, annotationId, annotationNumber) {
+            let currentOffset = 0;
+            const walker = document.createTreeWalker(
+                container,
+                NodeFilter.SHOW_TEXT,
+                null,
+                false
+            );
+            
+            let node;
+            while (node = walker.nextNode()) {
+                const nodeLength = node.textContent.length;
+                
+                if (currentOffset + nodeLength >= offset) {
+                    // 找到了包含目标偏移量的文本节点
+                    const positionInNode = offset - currentOffset;
+                    
+                    // 创建笔记标记元素
+                    const marker = document.createElement('sup');
+                    marker.className = 'annotation-number';
+                    marker.setAttribute('data-annotation-id', annotationId);
+                    marker.onclick = function() { viewAnnotation(annotationId); };
+                    marker.textContent = annotationNumber;
+                    
+                    if (positionInNode === 0) {
+                        // 在节点开头插入
+                        node.parentNode.insertBefore(marker, node);
+                    } else if (positionInNode >= nodeLength) {
+                        // 在节点末尾插入
+                        if (node.nextSibling) {
+                            node.parentNode.insertBefore(marker, node.nextSibling);
+                        } else {
+                            node.parentNode.appendChild(marker);
+                        }
+                    } else {
+                        // 在节点中间插入，需要分割文本节点
+                        const afterText = node.textContent.substring(positionInNode);
+                        node.textContent = node.textContent.substring(0, positionInNode);
+                        
+                        const afterNode = document.createTextNode(afterText);
+                        
+                        if (node.nextSibling) {
+                            node.parentNode.insertBefore(marker, node.nextSibling);
+                            node.parentNode.insertBefore(afterNode, marker.nextSibling);
+                        } else {
+                            node.parentNode.appendChild(marker);
+                            node.parentNode.appendChild(afterNode);
+                        }
+                    }
+                    
+                    return;
+                }
+                
+                currentOffset += nodeLength;
+            }
+        }
+
+        // 设置文本选择监听器
+        function setupSelectionListener() {
+            const content = document.getElementById('articleContent');
+            
+            document.addEventListener('mouseup', function(e) {
+                const selection = window.getSelection();
+                const selectedText = selection.toString().trim();
+                
+                if (selectedText.length > 0) {
+                    const range = selection.getRangeAt(0);
+                    
+                    // 检查选择是否在文章内容区域内
+                    if (content.contains(range.commonAncestorContainer)) {
+                        showAnnotationButton(selectedText, range);
+                    }
+                } else {
+                    hideAnnotationButton();
+                }
+            });
+            
+            document.addEventListener('mousedown', function(e) {
+                if (!e.target.closest('.annotation-button') && !e.target.closest('.ui.modal')) {
+                    hideAnnotationButton();
+                }
+            });
+        }
+
+        // 显示添加笔记按钮
+        function showAnnotationButton(text, range) {
+            currentSelection = {
+                text: text,
+                range: range,
+                startOffset: getTextOffset(range.startContainer, range.startOffset),
+                endOffset: getTextOffset(range.endContainer, range.endOffset)
+            };
+            
+            // 获取选中文字的开头位置
+            const rect = range.getBoundingClientRect();
+            const btn = document.getElementById('addAnnotationBtn');
+            
+            btn.classList.add('show');
+            btn.style.left = rect.left + 'px';
+            btn.style.top = (rect.top + window.scrollY - 50) + 'px';
+        }
+
+        // 隐藏添加笔记按钮
+        function hideAnnotationButton() {
+            const btn = document.getElementById('addAnnotationBtn');
+            btn.classList.remove('show');
+        }
+
+        // 获取文本在容器中的偏移量
+        function getTextOffset(node, offset) {
+            const content = document.getElementById('articleContent');
+            const range = document.createRange();
+            range.setStart(content, 0);
+            range.setEnd(node, offset);
+            return range.toString().length;
+        }
+
+        // 点击添加笔记按钮
+        document.getElementById('addAnnotationBtn').addEventListener('click', async function() {
+            if (currentSelection) {
+                // 检查用户是否登录
+                try {
+                    const response = await fetch('http://localhost:3000/api/current-user', {
+                        credentials: 'include'
+                    });
+                    
+                    if (!response.ok) {
+                        alert('登录后才能添加笔记');
+                        hideAnnotationButton();
+                        return;
+                    }
+                } catch (error) {
+                    alert('登录后才能添加笔记');
+                    hideAnnotationButton();
+                    return;
+                }
+                
+                // 重置 currentAnnotationId，确保是创建新笔记而不是编辑
+                currentAnnotationId = null;
+                document.getElementById('selectedTextDisplay').textContent = currentSelection.text;
+                document.getElementById('notePairsContainer').innerHTML = '';
+                notePairCounter = 0;
+                addNotePair();
+                $('#addAnnotationModal').modal('show');
+                hideAnnotationButton();
+            }
+        });
+
+        // 添加一个笔记 pair
+        function addNotePair(title = '', content = '') {
+            notePairCounter++;
+            const id = notePairCounter;
+            const container = document.getElementById('notePairsContainer');
+            
+            const pairDiv = document.createElement('div');
+            pairDiv.className = 'note-editor';
+            pairDiv.id = `notePair${id}`;
+            pairDiv.innerHTML = `
+                <div class="ui form">
+                    <div class="field">
+                        <label>标题</label>
+                        <input type="text" placeholder="输入标题" value="${title}" id="noteTitle${id}">
+                    </div>
+                    <div class="field">
+                        <label>内容（支持 Markdown）</label>
+                        <textarea rows="4" placeholder="输入内容，支持 Markdown 格式" id="noteContent${id}">${content}</textarea>
+                    </div>
+                    <button class="ui red mini button" onclick="removeNotePair(${id})">
+                        <i class="trash icon"></i>
+                        删除
+                    </button>
+                </div>
+            `;
+            
+            container.appendChild(pairDiv);
+        }
+
+        // 删除笔记 pair
+        function removeNotePair(id) {
+            const element = document.getElementById(`notePair${id}`);
+            if (element) {
+                element.remove();
+            }
+        }
+
+        // 保存笔记
+        async function saveAnnotation() {
+            const notes = [];
+            const container = document.getElementById('notePairsContainer');
+            const pairDivs = container.querySelectorAll('.note-editor');
+            
+            pairDivs.forEach(div => {
+                const id = div.id.replace('notePair', '');
+                const title = document.getElementById(`noteTitle${id}`).value.trim();
+                const content = document.getElementById(`noteContent${id}`).value.trim();
+                
+                if (title || content) {
+                    notes.push({ title, content });
+                }
+            });
+            
+            if (notes.length === 0) {
+                alert('请至少添加一条笔记');
+                return;
+            }
+            
+            try {
+                let url, method, body;
+                
+                if (currentAnnotationId) {
+                    // 编辑现有笔记
+                    url = `http://localhost:3000/api/annotations/${currentAnnotationId}`;
+                    method = 'PUT';
+                    body = { notes };
+                } else {
+                    // 创建新笔记
+                    if (!currentSelection) {
+                        alert('请先选择文本');
+                        return;
+                    }
+                    url = `http://localhost:3000/api/articles/${articleId}/annotations`;
+                    method = 'POST';
+                    body = {
+                        selectedText: currentSelection.text,
+                        startOffset: currentSelection.startOffset,
+                        endOffset: currentSelection.endOffset,
+                        notes
+                    };
+                }
+                
+                const response = await fetch(url, {
+                    method: method,
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    credentials: 'include',
+                    body: JSON.stringify(body)
+                });
+                
+                if (response.ok) {
+                    // 设置保存标志，允许关闭模态框而不需要确认
+                    isSaving = true;
+                    $('#addAnnotationModal').modal('hide');
+                    currentAnnotationId = null;
+                    window.getSelection().removeAllRanges();
+                    // 刷新页面以显示更改
+                    location.reload();
+                } else {
+                    const data = await response.json();
+                    alert(data.error || '保存失败');
+                }
+            } catch (error) {
+                console.error('保存笔记错误:', error);
+                alert('保存失败');
+            }
+        }
+
+        // 查看笔记
+        async function viewAnnotation(annotationId) {
+            const annotation = annotations.find(a => a.id === annotationId);
+            if (!annotation) return;
+            
+            currentAnnotationId = annotationId;
+            
+            document.getElementById('viewAnnotationNumber').textContent = annotation.annotationNumber;
+            document.getElementById('viewSelectedText').textContent = annotation.selectedText;
+            
+            // 显示作者和修改时间
+            document.getElementById('viewAnnotationAuthor').textContent = annotation.username || '未知用户';
+            const updatedDate = new Date(annotation.updatedAt);
+            document.getElementById('viewAnnotationUpdated').textContent = updatedDate.toLocaleString('zh-CN');
+            
+            // 根据是否是作者显示编辑/删除按钮
+            const ownerButtons = document.getElementById('annotationOwnerButtons');
+            if (annotation.isOwner) {
+                ownerButtons.style.display = 'inline-block';
+            } else {
+                ownerButtons.style.display = 'none';
+            }
+            
+            const container = document.getElementById('viewNotesContainer');
+            container.innerHTML = '';
+            
+            annotation.notes.forEach((note, index) => {
+                const noteDiv = document.createElement('div');
+                noteDiv.className = 'note-pair';
+                
+                const titleHtml = note.title ? `<h4>${escapeHtml(note.title)}</h4>` : '';
+                const contentHtml = note.content ? marked.parse(note.content) : '';
+                
+                noteDiv.innerHTML = `
+                    ${titleHtml}
+                    <div class="note-content">${contentHtml}</div>
+                `;
+                
+                container.appendChild(noteDiv);
+            });
+            
+            $('#viewAnnotationModal').modal('show');
+        }
+
+        // 编辑笔记
+        function editCurrentAnnotation() {
+            const annotation = annotations.find(a => a.id === currentAnnotationId);
+            if (!annotation) return;
+            
+            // 检查权限
+            if (!annotation.isOwner) {
+                alert('您没有权限编辑此笔记');
+                return;
+            }
+            
+            // 设置编辑标志，防止关闭模态框时重置 currentAnnotationId
+            isEditingAnnotation = true;
+            
+            $('#viewAnnotationModal').modal('hide');
+            
+            document.getElementById('selectedTextDisplay').textContent = annotation.selectedText;
+            document.getElementById('notePairsContainer').innerHTML = '';
+            notePairCounter = 0;
+            
+            annotation.notes.forEach(note => {
+                addNotePair(note.title, note.content);
+            });
+            
+            $('#addAnnotationModal').modal('show');
+        }
+
+        // 删除当前笔记
+        async function deleteCurrentAnnotation() {
+            const annotation = annotations.find(a => a.id === currentAnnotationId);
+            if (!annotation) return;
+            
+            // 检查权限
+            if (!annotation.isOwner) {
+                alert('您没有权限删除此笔记');
+                return;
+            }
+            
+            if (!confirm('确定要删除这条笔记吗？')) {
+                return;
+            }
+            
+            try {
+                const response = await fetch(`http://localhost:3000/api/annotations/${currentAnnotationId}`, {
+                    method: 'DELETE',
+                    credentials: 'include'
+                });
+                
+                if (response.ok) {
+                    $('#viewAnnotationModal').modal('hide');
+                    currentAnnotationId = null;
+                    // 刷新页面以显示更改
+                    location.reload();
+                } else {
+                    alert('删除失败');
+                }
+            } catch (error) {
+                console.error('删除笔记错误:', error);
+                alert('删除失败');
+            }
+        }
+
+        // HTML 转义函数
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        // 原有的文章操作函数
+        async function deleteArticle() {
+            if (!confirm('确定要删除这篇文章吗？删除后将返回首页。')) {
+                return;
+            }
+            
+            try {
+                const response = await fetch('http://localhost:3000/api/articles/{{ARTICLE_ID}}', {
+                    method: 'DELETE',
+                    credentials: 'include'
+                });
+                
+                if (response.ok) {
+                    alert('文章已删除');
+                    window.location.href = '/';
+                } else {
+                    alert('删除失败');
+                }
+            } catch (error) {
+                console.error('删除错误:', error);
+                alert('删除失败');
+            }
+        }
+
+        async function publishArticle() {
+            if (!confirm('确定将此私有文章设为公开吗？')) {
+                return;
+            }
+            try {
+                const response = await fetch('http://localhost:3000/api/articles/{{ARTICLE_ID}}/publish', {
+                    method: 'PATCH',
+                    credentials: 'include'
+                });
+                if (response.ok) {
+                    alert('文章已设为公开');
+                    location.reload();
+                } else {
+                    const data = await response.json().catch(() => ({}));
+                    alert(data.error || '操作失败');
+                }
+            } catch (e) {
+                console.error('设为公开错误:', e);
+                alert('操作失败');
+            }
+        }
+    </script>
+</body>
+</html>
