@@ -1,12 +1,14 @@
 // API 基础 URL
 const API_URL = 'http://localhost:3000/api';
 
-let currentArticleId = null;
 let currentUser = null;
 
 // 页面加载时检查登录状态
 document.addEventListener('DOMContentLoaded', () => {
   checkLoginStatus();
+  loadArticles(); // 无论是否登录都加载文章
+  initTabMenu();
+  initFileUpload();
 });
 
 // 检查登录状态
@@ -19,127 +21,48 @@ async function checkLoginStatus() {
     if (response.ok) {
       const data = await response.json();
       currentUser = data; // includes userId
-      showMainInterface();
+      showUserUI(currentUser);
     } else {
-      showAuthInterface();
+      showGuestUI();
     }
   } catch (error) {
     console.error('检查登录状态错误:', error);
-    showAuthInterface();
+    showGuestUI();
   }
 }
 
-// 显示主界面
-function showMainInterface() {
-  document.getElementById('authContainer').classList.add('hidden');
-  document.getElementById('mainContainer').classList.remove('hidden');
-  document.getElementById('userInfo').style.display = 'block';
-  document.getElementById('currentUsername').textContent = currentUser.username;
-  
-  loadArticles();
-  initTabMenu();
-  initFileUpload();
+// 显示已登录用户界面
+function showUserUI(user) {
+  document.getElementById('addArticleForm').classList.remove('hidden');
+  const userInfo = document.getElementById('userInfo');
+  userInfo.innerHTML = `
+    <div class="ui secondary menu">
+        <div class="item">
+            <i class="user icon"></i>
+            <span>${escapeHtml(user.username)}</span>
+        </div>
+        <div class="item">
+            <button class="ui button" onclick="logout()">登出</button>
+        </div>
+    </div>
+  `;
+  userInfo.style.display = 'block';
 }
 
-// 显示登录注册界面
-function showAuthInterface() {
-  document.getElementById('authContainer').classList.remove('hidden');
-  document.getElementById('mainContainer').classList.add('hidden');
-  document.getElementById('userInfo').style.display = 'none';
+// 显示访客界面
+function showGuestUI() {
+  document.getElementById('addArticleForm').classList.add('hidden');
+  const userInfo = document.getElementById('userInfo');
+  userInfo.innerHTML = `
+    <div class="ui secondary menu">
+      <div class="item">
+        <a href="/login" class="ui primary button">登录/注册</a>
+      </div>
+    </div>
+  `;
+  userInfo.style.display = 'block';
 }
 
-// 显示登录表单
-function showLoginForm() {
-  document.getElementById('loginForm').classList.remove('hidden');
-  document.getElementById('registerForm').classList.add('hidden');
-}
-
-// 显示注册表单
-function showRegisterForm() {
-  document.getElementById('loginForm').classList.add('hidden');
-  document.getElementById('registerForm').classList.remove('hidden');
-}
-
-// 用户登录
-async function login() {
-  const username = document.getElementById('loginUsername').value.trim();
-  const password = document.getElementById('loginPassword').value;
-  
-  if (!username || !password) {
-    showWarning('用户名和密码不能为空');
-    return;
-  }
-  
-  try {
-    const response = await fetch(`${API_URL}/login`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      credentials: 'include',
-      body: JSON.stringify({ username, password })
-    });
-    
-    const data = await response.json();
-    
-    if (response.ok) {
-      currentUser = { username: data.username, userId: data.userId };
-      showSuccess('登录成功');
-      showMainInterface();
-    } else {
-      showError(data.error || '登录失败');
-    }
-  } catch (error) {
-    console.error('登录错误:', error);
-    showError('登录失败');
-  }
-}
-
-// 用户注册
-async function register() {
-  const username = document.getElementById('registerUsername').value.trim();
-  const password = document.getElementById('registerPassword').value;
-  const confirmPassword = document.getElementById('registerPasswordConfirm').value;
-  
-  if (!username || !password) {
-    showWarning('用户名和密码不能为空');
-    return;
-  }
-  
-  if (password.length < 6) {
-    showWarning('密码至少需要6个字符');
-    return;
-  }
-  
-  if (password !== confirmPassword) {
-    showWarning('两次输入的密码不一致');
-    return;
-  }
-  
-  try {
-    const response = await fetch(`${API_URL}/register`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      credentials: 'include',
-      body: JSON.stringify({ username, password })
-    });
-    
-    const data = await response.json();
-    
-    if (response.ok) {
-      currentUser = { username: data.username, userId: data.userId };
-      showSuccess('注册成功');
-      showMainInterface();
-    } else {
-      showError(data.error || '注册失败');
-    }
-  } catch (error) {
-    console.error('注册错误:', error);
-    showError('注册失败');
-  }
-}
 
 // 用户登出
 async function logout() {
@@ -151,8 +74,8 @@ async function logout() {
     
     if (response.ok) {
       currentUser = null;
-      showSuccess('登出成功');
-      showAuthInterface();
+      showGuestUI();
+      loadArticles(); // 重新加载文章列表，以访客身份
     }
   } catch (error) {
     console.error('登出错误:', error);
@@ -246,7 +169,7 @@ function renderArticles(articles) {
     const publishButton = isAuthor && article.isPrivate ? `
       <button class="ui orange mini button" onclick="event.stopPropagation(); publishArticle('${article.id}')">
         <i class="unlock icon"></i>
-        公开
+        设为公开
       </button>
     ` : '';
     const privacyBadge = article.isPrivate
@@ -255,7 +178,7 @@ function renderArticles(articles) {
     
     return `
       <div class="ui segment article-item" data-id="${article.id}">
-  <div class="article-title">${escapeHtml(article.title)} ${privacyBadge}</div>
+        <div class="article-title">${escapeHtml(article.title)} ${privacyBadge}</div>
         <div class="article-preview">${escapeHtml(article.content)}</div>
         <div class="article-meta">
           ${article.author ? `<i class="user icon"></i>${escapeHtml(article.author)}` : '<i class="user outline icon"></i>匿名'}
@@ -320,6 +243,7 @@ async function addArticleByText() {
     
     document.getElementById('articleTitle').value = '';
     document.getElementById('articleContent').value = '';
+    document.getElementById('textPrivateCheckbox').checked = false;
     showSuccess('文章已添加');
     loadArticles();
   } catch (error) {
@@ -368,6 +292,7 @@ async function addArticleByFile() {
     document.getElementById('fileArticleTitle').value = '';
     fileInput.value = '';
     document.getElementById('fileInfo').style.display = 'none';
+    document.getElementById('filePrivateCheckbox').checked = false;
     showSuccess('文章已上传');
     loadArticles();
   } catch (error) {
@@ -425,6 +350,7 @@ async function deleteArticle(id) {
 
 // 工具函数
 function escapeHtml(text) {
+  if (typeof text !== 'string') return '';
   const map = {
     '&': '&amp;',
     '<': '&lt;',
@@ -465,12 +391,6 @@ function showError(message) {
 }
 
 function showNotification(message, type) {
-  // 使用 Semantic UI 的 toast 或其他通知方式
-  // 简单实现：使用浏览器的 alert（可以用 Semantic UI 的 modal 替代）
-  const icon = type === 'success' ? '✓' : type === 'warning' ? '⚠' : '✕';
-  console.log(`[${type.toUpperCase()}] ${message}`);
-  
-  // 创建一个临时的通知元素
   const notification = document.createElement('div');
   notification.className = `ui ${type === 'success' ? 'positive' : type === 'warning' ? 'warning' : 'negative'} message`;
   notification.style.position = 'fixed';
@@ -485,7 +405,6 @@ function showNotification(message, type) {
   
   document.body.appendChild(notification);
   
-  // 3 秒后自动删除
   setTimeout(() => {
     if (notification.parentElement) {
       notification.remove();

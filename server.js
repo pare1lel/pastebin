@@ -84,7 +84,18 @@ function requireAuth(req, res, next) {
   next();
 }
 
-// API 路由
+// 如果已登录，重定向到主页
+function redirectIfLoggedIn(req, res, next) {
+    if (req.session.userId) {
+        return res.redirect('/');
+    }
+    next();
+}
+
+// 登录页面路由
+app.get('/login', redirectIfLoggedIn, (req, res) => {
+    res.sendFile(path.join(__dirname, 'public', 'login.html'));
+});
 
 // 用户注册
 app.post('/api/register', async (req, res) => {
@@ -433,11 +444,8 @@ app.get('/article/:id', async (req, res) => {
                 <span style="margin-left: 20px;">
                     <i class="font icon"></i>
                     词数: ${article.wordCount}
-                </span>
-        <span style="margin-left: 20px;">
-          <i class="lock icon"></i>
-          ${article.isPrivate ? '私有' : '公开'}
-        </span>
+                </span>          
+          ${article.isPrivate ? '<span style="margin-left: 20px;"><i class="lock icon"></i>私有</span>' : ''}
             </div>
         </div>
         

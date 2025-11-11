@@ -11,6 +11,7 @@
             padding: 20px;
         }
         .container {
+            position: relative;
             max-width: 1200px;
             margin: 0 auto;
         }
@@ -72,9 +73,6 @@
         .stats {
             margin-bottom: 20px;
         }
-        .tab-menu {
-            margin-bottom: 20px !important;
-        }
         .upload-area {
             border: 2px dashed #ddd;
             border-radius: 5px;
@@ -93,8 +91,8 @@
         }
         .user-info {
             position: absolute;
-            top: 20px;
-            right: 20px;
+            top: 0px;
+            right: 0px;
         }
         .hidden {
             display: none !important;
@@ -111,72 +109,11 @@
     </style>
 </head>
 <body>
-    <!-- 用户信息栏 -->
-    <div class="user-info" id="userInfo" style="display: none;">
-        <div class="ui secondary menu">
-            <div class="item">
-                <i class="user icon"></i>
-                <span id="currentUsername"></span>
-            </div>
-            <div class="item">
-                <button class="ui button" onclick="logout()">登出</button>
-            </div>
+    <div class="container" id="mainContainer">
+        <!-- 用户信息栏 -->
+        <div class="user-info" id="userInfo" style="display: none;">
+            <!-- 内容将由 app.js 动态填充 -->
         </div>
-    </div>
-
-    <!-- 登录/注册界面 -->
-    <div class="auth-container" id="authContainer">
-        <div class="ui segments">
-            <div class="ui segment">
-                <h2 class="ui center aligned header">
-                    <i class="book icon"></i>
-                    英语文章阅读工具
-                </h2>
-            </div>
-            
-            <!-- 登录表单 -->
-            <div class="ui segment" id="loginForm">
-                <h3 class="ui header">登录</h3>
-                <div class="ui form">
-                    <div class="field">
-                        <label>用户名</label>
-                        <input type="text" id="loginUsername" placeholder="输入用户名">
-                    </div>
-                    <div class="field">
-                        <label>密码</label>
-                        <input type="password" id="loginPassword" placeholder="输入密码">
-                    </div>
-                    <button class="ui primary fluid button" onclick="login()">登录</button>
-                    <div class="ui divider"></div>
-                    <button class="ui basic fluid button" onclick="showRegisterForm()">没有账号？点击注册</button>
-                </div>
-            </div>
-
-            <!-- 注册表单 -->
-            <div class="ui segment hidden" id="registerForm">
-                <h3 class="ui header">注册</h3>
-                <div class="ui form">
-                    <div class="field">
-                        <label>用户名</label>
-                        <input type="text" id="registerUsername" placeholder="输入用户名">
-                    </div>
-                    <div class="field">
-                        <label>密码（至少6个字符）</label>
-                        <input type="password" id="registerPassword" placeholder="输入密码">
-                    </div>
-                    <div class="field">
-                        <label>确认密码</label>
-                        <input type="password" id="registerPasswordConfirm" placeholder="再次输入密码">
-                    </div>
-                    <button class="ui primary fluid button" onclick="register()">注册</button>
-                    <div class="ui divider"></div>
-                    <button class="ui basic fluid button" onclick="showLoginForm()">已有账号？点击登录</button>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <div class="container hidden" id="mainContainer">
         <!-- 头部 -->
         <div class="header-section">
             <h1 class="ui header">
@@ -189,7 +126,7 @@
         </div>
 
         <!-- 添加文章表单 -->
-        <div class="add-article-form">
+        <div class="add-article-form hidden" id="addArticleForm">
             <div class="ui segment">
                 <h3 class="ui header">
                     <i class="plus icon"></i>
@@ -257,7 +194,7 @@
                         <div class="field">
                             <div class="ui checkbox">
                                 <input type="checkbox" id="filePrivateCheckbox">
-                                <label for="filePrivateCheckbox">将本文设为私有（仅自己可见）</label>
+                                <label for="filePrivateCheckbox">将文章设为私有（仅自己可见）</label>
                             </div>
                         </div>
                         <button class="ui primary button" onclick="addArticleByFile()">

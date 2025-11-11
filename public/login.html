@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>登录/注册 - 英语文章阅读工具</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/semantic-ui@2.4.2/dist/semantic.min.css">
+    <style>
+        body {
+            background-color: #f5f5f5;
+        }
+        .auth-container {
+            max-width: 450px;
+            margin: 100px auto;
+        }
+        .hidden {
+            display: none !important;
+        }
+    </style>
+</head>
+<body>
+    <!-- 登录/注册界面 -->
+    <div class="auth-container" id="authContainer">
+        <div class="ui segments">
+            <div class="ui segment">
+                <h2 class="ui center aligned header">
+                    <i class="book icon"></i>
+                    英语文章阅读工具
+                </h2>
+            </div>
+            
+            <!-- 登录表单 -->
+            <div class="ui segment" id="loginForm">
+                <h3 class="ui header">登录</h3>
+                <div class="ui form">
+                    <div class="field">
+                        <label>用户名</label>
+                        <input type="text" id="loginUsername" placeholder="输入用户名">
+                    </div>
+                    <div class="field">
+                        <label>密码</label>
+                        <input type="password" id="loginPassword" placeholder="输入密码">
+                    </div>
+                    <button class="ui primary fluid button" onclick="login()">登录</button>
+                    <div class="ui divider"></div>
+                    <button class="ui basic fluid button" onclick="showRegisterForm()">没有账号？点击注册</button>
+                </div>
+            </div>
+
+            <!-- 注册表单 -->
+            <div class="ui segment hidden" id="registerForm">
+                <h3 class="ui header">注册</h3>
+                <div class="ui form">
+                    <div class="field">
+                        <label>用户名</label>
+                        <input type="text" id="registerUsername" placeholder="输入用户名">
+                    </div>
+                    <div class="field">
+                        <label>密码（至少6个字符）</label>
+                        <input type="password" id="registerPassword" placeholder="输入密码">
+                    </div>
+                    <div class="field">
+                        <label>确认密码</label>
+                        <input type="password" id="registerPasswordConfirm" placeholder="再次输入密码">
+                    </div>
+                    <button class="ui primary fluid button" onclick="register()">注册</button>
+                    <div class="ui divider"></div>
+                    <button class="ui basic fluid button" onclick="showLoginForm()">已有账号？点击登录</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/semantic-ui@2.4.2/dist/semantic.min.js"></script>
+    <script src="login.js"></script>
+</body>
+</html>
