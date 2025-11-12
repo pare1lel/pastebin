@@ -106,6 +106,12 @@
             margin-left: 10px;
             color: #2185d0;
         }
+        .admin-section {
+            margin-top: 40px;
+        }
+        .user-management-table {
+            margin-top: 20px;
+        }
     </style>
 </head>
 <body>
@@ -220,6 +226,37 @@
                     <div class="ui active inline mini loader"></div>
                     加载中...
                 </div>
+            </div>
+        </div>
+
+        <!-- 用户管理区域（仅 root 用户可见） -->
+        <div class="admin-section hidden" id="adminSection">
+            <div class="ui segment">
+                <h3 class="ui header">
+                    <i class="users icon"></i>
+                    <div class="content">
+                        用户管理
+                        <div class="sub header">管理所有用户的权限</div>
+                    </div>
+                </h3>
+                <table class="ui celled table user-management-table">
+                    <thead>
+                        <tr>
+                            <th class="center aligned">用户名</th>
+                            <th class="center aligned">注册时间</th>
+                            <th class="center aligned">管理权限</th>
+                            <th class="center aligned">操作</th>
+                        </tr>
+                    </thead>
+                    <tbody id="usersTableBody">
+                        <tr>
+                            <td colspan="4" class="center aligned">
+                                <div class="ui active inline mini loader"></div>
+                                加载中...
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
             </div>
         </div>
     </div>

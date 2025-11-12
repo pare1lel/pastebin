@@ -34,6 +34,20 @@ async function checkLoginStatus() {
 // 显示已登录用户界面
 function showUserUI(user) {
   document.getElementById('addArticleForm').classList.remove('hidden');
+  
+  // 普通用户（非管理）隐藏"设为私有"复选框
+  if (!user.isAdmin) {
+    const textPrivateCheckbox = document.getElementById('textPrivateCheckbox').parentElement;
+    const filePrivateCheckbox = document.getElementById('filePrivateCheckbox').parentElement;
+    if (textPrivateCheckbox) textPrivateCheckbox.style.display = 'none';
+    if (filePrivateCheckbox) filePrivateCheckbox.style.display = 'none';
+  } else {
+    const textPrivateCheckbox = document.getElementById('textPrivateCheckbox').parentElement;
+    const filePrivateCheckbox = document.getElementById('filePrivateCheckbox').parentElement;
+    if (textPrivateCheckbox) textPrivateCheckbox.style.display = 'block';
+    if (filePrivateCheckbox) filePrivateCheckbox.style.display = 'block';
+  }
+  
   const userInfo = document.getElementById('userInfo');
   userInfo.innerHTML = `
     <div class="ui secondary menu">
@@ -47,6 +61,14 @@ function showUserUI(user) {
     </div>
   `;
   userInfo.style.display = 'block';
+  
+  // 如果是 root 用户，显示用户管理区域
+  if (user.username === 'root') {
+    document.getElementById('adminSection').classList.remove('hidden');
+    loadUsers();
+  } else {
+    document.getElementById('adminSection').classList.add('hidden');
+  }
 }
 
 // 显示访客界面
@@ -158,6 +180,8 @@ function renderArticles(articles) {
     return;
   }
   
+  const isAdmin = currentUser && currentUser.isAdmin;
+  
   container.innerHTML = articles.map(article => {
     const isAuthor = currentUser && article.authorId === currentUser.userId;
     const deleteButton = isAuthor ? `
@@ -166,15 +190,19 @@ function renderArticles(articles) {
         删除
       </button>
     ` : '';
-    const publishButton = isAuthor && article.isPrivate ? `
+    
+    // 普通用户不显示"设为公开"按钮
+    const publishButton = isAuthor && article.isPrivate && isAdmin ? `
       <button class="ui orange mini button" onclick="event.stopPropagation(); publishArticle('${article.id}')">
         <i class="unlock icon"></i>
         设为公开
       </button>
     ` : '';
-    const privacyBadge = article.isPrivate
+    
+    // 普通用户不显示权限标签
+    const privacyBadge = isAdmin ? (article.isPrivate
       ? '<span class="ui red mini label">私有</span>'
-      : '<span class="ui green mini label">公开</span>';
+      : '<span class="ui green mini label">公开</span>') : '';
     
     return `
       <div class="ui segment article-item" data-id="${article.id}">
@@ -375,6 +403,89 @@ function formatDate(dateString) {
   if (diffDays < 7) return `${diffDays} 天前`;
   
   return date.toLocaleDateString('zh-CN') + ' ' + date.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
+}
+
+// 加载所有用户（仅管理）
+async function loadUsers() {
+  try {
+    const response = await fetch(`${API_URL}/users`, {
+      credentials: 'include'
+    });
+    
+    if (!response.ok) {
+      throw new Error('获取用户列表失败');
+    }
+    
+    const users = await response.json();
+    renderUsers(users);
+  } catch (error) {
+    console.error('加载用户错误:', error);
+    const tbody = document.getElementById('usersTableBody');
+    tbody.innerHTML = '<tr><td colspan="4" class="center aligned error">加载失败</td></tr>';
+  }
+}
+
+// 渲染用户列表
+function renderUsers(users) {
+  const tbody = document.getElementById('usersTableBody');
+  
+  if (users.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="4" class="center aligned">暂无用户</td></tr>';
+    return;
+  }
+  
+  tbody.innerHTML = users.map(user => {
+    const isRoot = user.username === 'root';
+    if (isRoot) { return ''; }
+
+    const adminBadge = user.isAdmin 
+      ? '<span class="ui green mini label">是</span>' 
+      : '<span class="ui grey mini label">否</span>';
+
+    const actionButton = user.isAdmin
+        ? `<button class="ui red mini button" onclick="toggleAdmin('${user.id}', false)">撤销管理</button>`
+        : `<button class="ui green mini button" onclick="toggleAdmin('${user.id}', true)">设为管理</button>`;
+    
+    return `
+      <tr>
+        <td class="center aligned">${escapeHtml(user.username)}</td>
+        <td class="center aligned">${formatDate(user.createdAt)}</td>
+        <td class="center aligned">${adminBadge}</td>
+        <td class="center aligned">${actionButton}</td>
+      </tr>
+    `;
+  }).join('');
+}
+
+// 切换用户管理权限
+async function toggleAdmin(userId, setAsAdmin) {
+  const action = setAsAdmin ? '设为管理' : '撤销管理权限';
+  
+  if (!confirm(`确定要${action}吗？`)) {
+    return;
+  }
+  
+  try {
+    const response = await fetch(`${API_URL}/users/${userId}/admin`, {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      credentials: 'include',
+      body: JSON.stringify({ isAdmin: setAsAdmin })
+    });
+    
+    if (!response.ok) {
+      const data = await response.json();
+      throw new Error(data.error || '操作失败');
+    }
+    
+    showSuccess('权限已更新');
+    loadUsers();
+  } catch (error) {
+    console.error('修改权限错误:', error);
+    showError(error.message || '修改权限失败');
+  }
 }
 
 // 通知函数

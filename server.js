@@ -88,6 +88,17 @@ function requireAuth(req, res, next) {
   next();
 }
 
+// 管理权限中间件
+function requireAdmin(req, res, next) {
+  if (!req.session.userId) {
+    return res.status(401).json({ error: '请先登录' });
+  }
+  if (!req.session.isAdmin) {
+    return res.status(403).json({ error: '需要管理权限' });
+  }
+  next();
+}
+
 // 如果已登录，重定向到主页
 function redirectIfLoggedIn(req, res, next) {
     if (req.session.userId) {
@@ -124,9 +135,11 @@ app.post('/api/register', async (req, res) => {
     const hashedPassword = await bcrypt.hash(password, 10);
     
     // 创建新用户
+    const isRootUser = username.trim() === 'root';
     const newUser = {
       username: username.trim(),
       password: hashedPassword,
+      isAdmin: isRootUser, // root 用户默认是管理
       createdAt: new Date().toISOString()
     };
     
@@ -135,6 +148,7 @@ app.post('/api/register', async (req, res) => {
     // 自动登录
     req.session.userId = result.insertedId.toString();
     req.session.username = username.trim();
+    req.session.isAdmin = isRootUser;
     
     res.status(201).json({ 
       message: '注册成功',
@@ -168,14 +182,25 @@ app.post('/api/login', async (req, res) => {
       return res.status(401).json({ error: '用户名或密码错误' });
     }
     
+    // 如果是 root 用户但数据库中没有 isAdmin 字段，自动设置为管理
+    if (user.username === 'root' && !user.isAdmin) {
+      await usersCollection.updateOne(
+        { _id: user._id },
+        { $set: { isAdmin: true } }
+      );
+      user.isAdmin = true;
+    }
+    
     // 设置会话
     req.session.userId = user._id.toString();
     req.session.username = user.username;
+    req.session.isAdmin = user.isAdmin || false;
     
     res.json({ 
       message: '登录成功',
       username: user.username,
-      userId: req.session.userId
+      userId: req.session.userId,
+      isAdmin: req.session.isAdmin
     });
   } catch (error) {
     console.error('登录错误:', error);
@@ -198,10 +223,72 @@ app.get('/api/current-user', (req, res) => {
   if (req.session.userId) {
     res.json({ 
       username: req.session.username,
-      userId: req.session.userId
+      userId: req.session.userId,
+      isAdmin: req.session.isAdmin || false
     });
   } else {
     res.status(401).json({ error: '未登录' });
+  }
+});
+
+// 获取所有用户（仅管理）
+app.get('/api/users', requireAdmin, async (req, res) => {
+  try {
+    const users = await usersCollection
+      .find({}, { projection: { password: 0 } }) // 不返回密码
+      .sort({ createdAt: 1 })
+      .toArray();
+    
+    const formattedUsers = users.map(user => ({
+      id: user._id.toString(),
+      username: user.username,
+      isAdmin: user.isAdmin || false,
+      createdAt: user.createdAt
+    }));
+    
+    res.json(formattedUsers);
+  } catch (error) {
+    console.error('获取用户列表错误:', error);
+    res.status(500).json({ error: '获取用户列表失败' });
+  }
+});
+
+// 修改用户管理权限（仅 root 用户）
+app.patch('/api/users/:id/admin', requireAuth, async (req, res) => {
+  try {
+    // 只有 root 用户可以修改权限
+    if (req.session.username !== 'root') {
+      return res.status(403).json({ error: '只有 root 用户可以修改管理权限' });
+    }
+    
+    const { id } = req.params;
+    const { isAdmin } = req.body;
+    
+    // 不能修改自己的权限
+    if (id === req.session.userId) {
+      return res.status(400).json({ error: '不能修改自己的权限' });
+    }
+    
+    const user = await usersCollection.findOne({ _id: new ObjectId(id) });
+    
+    if (!user) {
+      return res.status(404).json({ error: '用户不存在' });
+    }
+    
+    // root 用户的权限不能被修改
+    if (user.username === 'root') {
+      return res.status(400).json({ error: 'root 用户的权限不能被修改' });
+    }
+    
+    await usersCollection.updateOne(
+      { _id: new ObjectId(id) },
+      { $set: { isAdmin: !!isAdmin } }
+    );
+    
+    res.json({ message: '权限已更新', userId: id, isAdmin: !!isAdmin });
+  } catch (error) {
+    console.error('修改用户权限错误:', error);
+    res.status(500).json({ error: '修改权限失败' });
   }
 });
 
@@ -243,7 +330,12 @@ app.get('/api/articles', async (req, res) => {
 app.post('/api/articles', requireAuth, async (req, res) => {
   try {
     const { title, content } = req.body;
-    const isPrivate = req.body.isPrivate === true || req.body.isPrivate === 'true';
+    let isPrivate = req.body.isPrivate === true || req.body.isPrivate === 'true';
+    
+    // 普通用户（非管理）只能创建私有文章
+    if (!req.session.isAdmin) {
+      isPrivate = true;
+    }
     
     if (!title || title.trim() === '') {
       return res.status(400).json({ error: '标题不能为空' });
@@ -287,7 +379,12 @@ app.post('/api/articles/upload', requireAuth, upload.single('file'), async (req,
     }
 
     const { title } = req.body;
-    const isPrivate = req.body.isPrivate === true || req.body.isPrivate === 'true';
+    let isPrivate = req.body.isPrivate === true || req.body.isPrivate === 'true';
+    
+    // 普通用户（非管理）只能创建私有文章
+    if (!req.session.isAdmin) {
+      isPrivate = true;
+    }
     
     // 读取文件内容
     const content = fs.readFileSync(req.file.path, 'utf-8');
@@ -367,21 +464,33 @@ app.get('/article/:id', async (req, res) => {
   const templatePath = path.join(__dirname, 'article-template.html');
   let html = fs.readFileSync(templatePath, 'utf-8');
 
+  // 检查当前用户是否是管理
+  const currentUser = req.session.userId ? await usersCollection.findOne({ _id: new ObjectId(req.session.userId) }) : null;
+  const isAdmin = currentUser && currentUser.isAdmin;
+
   // 准备动态内容
-  const authorButtons = isAuthor ? `
+  let authorButtons = '';
+  if (isAuthor) {
+    authorButtons = `
             <button class="ui red button" onclick="deleteArticle()">
                 <i class="trash icon"></i>
                 删除文章
-            </button>
-      ${article.isPrivate ? `
+            </button>`;
+    
+    // 只有管理才能看到"设为公开"按钮
+    if (isAdmin && article.isPrivate) {
+      authorButtons += `
       <button class="ui orange button" onclick="publishArticle()">
         <i class="unlock icon"></i>
         设为公开
-      </button>` : ''}
-            ` : '';
+      </button>`;
+    }
+  }
 
   const authorInfo = article.author ? `<i class="user icon"></i>作者: ${article.author}` : '';
-  const privacyLabel = article.isPrivate ? '<span style="margin-left: 20px;"><i class="lock icon"></i>私有</span>' : '';
+  
+  // 只有管理才能看到权限标签
+  const privacyLabel = isAdmin && article.isPrivate ? '<span style="margin-left: 20px;"><i class="lock icon"></i>私有</span>' : '';
 
   // 替换模板占位符
   html = html
