@@ -80,22 +80,17 @@
         
         .annotation-number {
             display: inline-block;
-            background-color: #2185d0;
-            color: white;
-            border-radius: 50%;
-            width: 20px;
-            height: 20px;
-            line-height: 20px;
-            text-align: center;
-            font-size: 12px;
-            margin-left: 3px;
+            color: #2185d0;
+            font-weight: bold;
+            margin-left: 4px;
             vertical-align: super;
             cursor: pointer;
-            font-weight: bold;
+            font-size: 0.95em;
         }
-        
+
         .annotation-number:hover {
-            background-color: #1678c2;
+            color: #1678c2;
+            text-decoration: underline;
         }
         
         .note-pair {
@@ -109,10 +104,6 @@
         .note-pair h4 {
             margin-top: 0;
             color: #2185d0;
-        }
-        
-        .note-content {
-            margin-top: 10px;
         }
         
         .selected-text-display {
@@ -166,6 +157,12 @@
                     词数: {{WORD_COUNT}}
                 </span>
                 {{PRIVACY_LABEL}}
+                <span style="margin-left: 20px;">
+                    <div class="ui checkbox">
+                        <input type="checkbox" id="showAllNotesCheckbox">
+                        <label for="showAllNotesCheckbox">查看所有笔记</label>
+                    </div>
+                </span>
             </div>
         </div>
         
@@ -256,13 +253,19 @@
         let currentAnnotationId = null;
         let notePairCounter = 0;
         let isEditingAnnotation = false; // 标志：是否正在编辑笔记
-        let isSaving = false; // 标志：是否正在保存（保存时不需要确认关闭）
+        let isSaving = false; // 标志：是否正在保存（保存时不需要确认）
+        let originalArticleContent = ''; // 用于存储原始文章内容
         
         // 页面加载时获取所有笔记
         $(document).ready(async function() {
+            originalArticleContent = $('#articleContent').html(); // 存储原始内容
             await checkUserStatus();
             await loadAnnotations();
             setupSelectionListener();
+            
+            $('#showAllNotesCheckbox').on('change', function() {
+                renderAnnotations();
+            });
             
             // 监听模态框关闭事件，重置状态
             $('#addAnnotationModal').modal({
@@ -272,7 +275,17 @@
                     if (isSaving) {
                         return true; // 正在保存，直接允许关闭
                     }
-                    if (confirm('您有未保存的笔记内容，确定要退出吗？')) {
+                    // 笔记为空时不需要确认
+                    const container = document.getElementById('notePairsContainer');
+                    const pairDivs = container.querySelectorAll('.note-editor');
+                    const isEmpty = Array.from(pairDivs).every(div => {
+                        const id = div.id.replace('notePair', '');
+                        const title = document.getElementById(`noteTitle${id}`).value.trim();
+                        const content = document.getElementById(`noteContent${id}`).value.trim();
+                        return title === '' && content === '';
+                    });
+
+                    if (isEmpty || confirm('您有未保存的笔记内容，确定要退出吗？')) {
                         if (!isEditingAnnotation) {
                             currentAnnotationId = null;
                         }
@@ -402,9 +415,13 @@
         // 渲染笔记到文章内容中
         function renderAnnotations() {
             const content = document.getElementById('articleContent');
+            content.innerHTML = originalArticleContent; // 恢复原始内容
             
+            const showAll = $('#showAllNotesCheckbox').is(':checked');
+            const filteredAnnotations = showAll ? annotations : annotations.filter(a => a.isOwner);
+
             // 按照位置倒序排序，从后往前插入，避免位置偏移
-            const sortedAnnotations = [...annotations].sort((a, b) => b.endOffset - a.endOffset);
+            const sortedAnnotations = [...filteredAnnotations].sort((a, b) => b.endOffset - a.endOffset);
             
             // 遍历所有文本节点并插入笔记标记
             sortedAnnotations.forEach(ann => {
@@ -430,12 +447,12 @@
                     // 找到了包含目标偏移量的文本节点
                     const positionInNode = offset - currentOffset;
                     
-                    // 创建笔记标记元素
-                    const marker = document.createElement('sup');
+                    // 创建笔记标记元素，显示为 [n]
+                    const marker = document.createElement('span');
                     marker.className = 'annotation-number';
                     marker.setAttribute('data-annotation-id', annotationId);
                     marker.onclick = function() { viewAnnotation(annotationId); };
-                    marker.textContent = annotationNumber;
+                    marker.textContent = `[${annotationNumber}]`;
                     
                     if (positionInNode === 0) {
                         // 在节点开头插入
@@ -703,11 +720,7 @@
                 const titleHtml = note.title ? `<h4>${escapeHtml(note.title)}</h4>` : '';
                 const contentHtml = note.content ? marked.parse(note.content) : '';
                 
-                noteDiv.innerHTML = `
-                    ${titleHtml}
-                    <div class="note-content">${contentHtml}</div>
-                `;
-                
+                noteDiv.innerHTML = titleHtml + contentHtml;
                 container.appendChild(noteDiv);
             });
             
