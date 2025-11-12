@@ -3,6 +3,7 @@ const bodyParser = require('body-parser');
 const cors = require('cors');
 const fs = require('fs');
 const path = require('path');
+const https = require('https');
 const multer = require('multer');
 const { MongoClient, ObjectId } = require('mongodb');
 const { marked } = require('marked');
@@ -46,6 +47,44 @@ function calculateWordCount(text) {
   return chineseCount + englishCount;
 }
 
+// 请求计时中间件
+app.use((req, res, next) => {
+  const startTime = Date.now();
+  const requestTime = new Date().toLocaleString('zh-CN');
+  
+  // 监听响应结束事件
+  res.on('finish', () => {
+    const duration = Date.now() - startTime;
+    const statusCode = res.statusCode;
+    const method = req.method;
+    const url = req.originalUrl || req.url;
+    
+    // 根据响应时间设置颜色（如果终端支持）
+    let timeColor = '\x1b[32m'; // 绿色
+    if (duration > 1000) {
+      timeColor = '\x1b[31m'; // 红色
+    } else if (duration > 500) {
+      timeColor = '\x1b[33m'; // 黄色
+    }
+    
+    // 根据状态码设置颜色
+    let statusColor = '\x1b[32m'; // 绿色
+    if (statusCode >= 500) {
+      statusColor = '\x1b[31m'; // 红色
+    } else if (statusCode >= 400) {
+      statusColor = '\x1b[33m'; // 黄色
+    }
+    
+    console.log(
+      `[${requestTime}] ${method} ${url} - ` +
+      `${statusColor}${statusCode}\x1b[0m - ` +
+      `${timeColor}${duration}ms\x1b[0m`
+    );
+  });
+  
+  next();
+});
+
 // 中间件
 app.use(cors({
   origin: true, // 允许所有来源，或者使用环境变量
@@ -53,13 +92,13 @@ app.use(cors({
 }));
 app.use(bodyParser.json());
 app.use(session({
-  secret: 'your-secret-key-change-in-production',
+  secret: process.env.SESSION_SECRET || 'your-secret-key-change-in-production',
   resave: false,
   saveUninitialized: false,
   cookie: { 
-    secure: false, // 在生产环境中使用 HTTPS 时设为 true
-    maxAge: 24 * 60 * 60 * 1000 // 24小时
-  }
+    secure: true, // 仅通过 HTTPS 传输
+    maxAge: 24 * 60 * 60 * 1000, // 24小时
+  },
 }));
 app.use(express.static('public'));
 
@@ -744,14 +783,87 @@ app.delete('/api/annotations/:id', requireAuth, async (req, res) => {
   }
 });
 
+// 生成自签名证书的函数
+function generateSelfSignedCert() {
+  const { execSync } = require('child_process');
+  const certDir = path.join(__dirname, 'ssl');
+  const keyPath = path.join(certDir, 'private.key');
+  const certPath = path.join(certDir, 'certificate.crt');
+  
+  // 如果证书已存在，直接返回
+  if (fs.existsSync(keyPath) && fs.existsSync(certPath)) {
+    console.log('使用现有的 SSL 证书');
+    return { keyPath, certPath };
+  }
+  
+  // 创建 ssl 目录
+  if (!fs.existsSync(certDir)) {
+    fs.mkdirSync(certDir, { recursive: true });
+  }
+  
+  console.log('生成自签名 SSL 证书（有效期 365 天）...');
+  
+  try {
+    // 生成私钥和证书（有效期 365 天）
+    execSync(`openssl req -x509 -newkey rsa:4096 -nodes -keyout "${keyPath}" -out "${certPath}" -days 365 -subj "/C=CN/ST=State/L=City/O=Organization/OU=Department/CN=localhost"`, {
+      stdio: 'inherit'
+    });
+    
+    console.log('SSL 证书生成成功！');
+    console.log(`私钥: ${keyPath}`);
+    console.log(`证书: ${certPath}`);
+    
+    return { keyPath, certPath };
+  } catch (error) {
+    console.error('生成证书失败:', error.message);
+    console.error('请确保已安装 OpenSSL');
+    return null;
+  }
+}
+
 // 初始化并启动服务器
 async function startServer() {
   await connectDB();
   
-  // 监听任何ip地址的请求
-  app.listen(PORT, '0.0.0.0', () => {
-    console.log(`服务器已启动，访问 http://localhost:${PORT}`);
-  });
+  // 生成或加载 SSL 证书
+  const certPaths = generateSelfSignedCert();
+  
+  if (certPaths) {
+    try {
+      // 读取证书文件
+      const httpsOptions = {
+        key: fs.readFileSync(certPaths.keyPath),
+        cert: fs.readFileSync(certPaths.certPath)
+      };
+      
+      // 启动 HTTPS 服务器
+      https.createServer(httpsOptions, app).listen(PORT, '0.0.0.0', () => {
+        console.log('========================================');
+        console.log('✅ HTTPS 服务器已启动');
+        console.log(`   本地访问: https://localhost:${PORT}`);
+        console.log(`   网络访问: https://<your-ip>:${PORT}`);
+        console.log('========================================');
+        console.log('⚠️  浏览器会警告自签名证书不安全');
+        console.log('   点击"高级" → "继续访问"即可');
+        console.log('========================================');
+      });
+    } catch (error) {
+      console.error('启动 HTTPS 服务器失败:', error.message);
+      console.log('降级使用 HTTP 服务器...');
+      
+      // 降级到 HTTP
+      app.listen(PORT, '0.0.0.0', () => {
+        console.log(`⚠️  HTTP 服务器已启动（未加密）: http://localhost:${PORT}`);
+        console.log('警告：密码将以明文传输，不推荐在生产环境使用！');
+      });
+    }
+  } else {
+    // 如果无法生成证书，使用 HTTP
+    app.listen(PORT, '0.0.0.0', () => {
+      console.log(`⚠️  HTTP 服务器已启动（未加密）: http://localhost:${PORT}`);
+      console.log('警告：密码将以明文传输，不推荐在生产环境使用！');
+    });
+  }
 }
 
 startServer().catch(console.error);

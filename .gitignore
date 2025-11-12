@@ -2,3 +2,4 @@ node_modules/
 uploads/
 package-lock.json
 sample_article.md
+ssl/
