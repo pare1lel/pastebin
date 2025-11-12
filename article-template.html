@@ -320,7 +320,16 @@
                     $('#addAnnotationModal').modal('hide');
                     return;
                 }
-                if (confirm('您有未保存的笔记内容，确定要退出吗？')) {
+                // 笔记为空时不需要确认
+                const container = document.getElementById('notePairsContainer');
+                const pairDivs = container.querySelectorAll('.note-editor');
+                const isEmpty = Array.from(pairDivs).every(div => {
+                    const id = div.id.replace('notePair', '');
+                    const title = document.getElementById(`noteTitle${id}`).value.trim();
+                    const content = document.getElementById(`noteContent${id}`).value.trim();
+                    return title === '' && content === '';
+                });
+                if (isEmpty || confirm('您有未保存的笔记内容，确定要退出吗？')) {
                     if (!isEditingAnnotation) {
                         currentAnnotationId = null;
                     }
@@ -333,7 +342,7 @@
         // 检查用户登录状态
         async function checkUserStatus() {
             try {
-                const response = await fetch('http://localhost:3000/api/current-user', {
+                const response = await fetch('/api/current-user', {
                     credentials: 'include'
                 });
                 
@@ -380,7 +389,7 @@
         // 登出
         async function logout() {
             try {
-                const response = await fetch('http://localhost:3000/api/logout', {
+                const response = await fetch('/api/logout', {
                     method: 'POST',
                     credentials: 'include'
                 });
@@ -399,7 +408,7 @@
         // 加载笔记
         async function loadAnnotations() {
             try {
-                const response = await fetch(`http://localhost:3000/api/articles/${articleId}/annotations`, {
+                const response = await fetch(`/api/articles/${articleId}/annotations`, {
                     credentials: 'include'
                 });
                 
@@ -505,7 +514,8 @@
                     
                     // 检查选择是否在文章内容区域内
                     if (content.contains(range.commonAncestorContainer)) {
-                        showAnnotationButton(selectedText, range);
+                        // 传递鼠标坐标
+                        showAnnotationButton(selectedText, range, e.clientX, e.clientY);
                     }
                 } else {
                     hideAnnotationButton();
@@ -520,7 +530,7 @@
         }
 
         // 显示添加笔记按钮
-        function showAnnotationButton(text, range) {
+        function showAnnotationButton(text, range, mouseX, mouseY) {
             currentSelection = {
                 text: text,
                 range: range,
@@ -528,13 +538,44 @@
                 endOffset: getTextOffset(range.endContainer, range.endOffset)
             };
             
-            // 获取选中文字的开头位置
-            const rect = range.getBoundingClientRect();
             const btn = document.getElementById('addAnnotationBtn');
             
+            // 获取按钮尺寸（如果还没有显示过，先临时显示以获取尺寸）
+            btn.style.visibility = 'hidden';
             btn.classList.add('show');
-            btn.style.left = rect.left + 'px';
-            btn.style.top = (rect.top + window.scrollY - 50) + 'px';
+            const btnWidth = btn.offsetWidth || 120;
+            const btnHeight = btn.offsetHeight || 40;
+            btn.style.visibility = 'visible';
+            
+            // 获取视口尺寸
+            const viewportWidth = window.innerWidth;
+            const viewportHeight = window.innerHeight;
+            
+            // 计算按钮位置（默认在鼠标光标上方）
+            let left = mouseX - (btnWidth / 2); // 水平居中于鼠标位置
+            let top = mouseY - (btnHeight / 2); // 垂直居中于鼠标位置
+            
+            // 水平方向边界检查和修正
+            if (left < 10) {
+                left = 10; // 左边界
+            } else if (left + btnWidth > viewportWidth - 10) {
+                left = viewportWidth - btnWidth - 10; // 右边界
+            }
+            
+            // 垂直方向边界检查和修正
+            if (top < 10) {
+                // 如果上方空间不够，放在鼠标光标下方
+                top = mouseY + 10;
+            }
+            
+            // 确保不超出底部
+            if (top + btnHeight > viewportHeight - 10) {
+                top = viewportHeight - btnHeight - 10;
+            }
+            
+            btn.classList.add('show');
+            btn.style.left = left + 'px';
+            btn.style.top = top + 'px';
         }
 
         // 隐藏添加笔记按钮
@@ -581,7 +622,7 @@
             if (currentSelection) {
                 // 检查用户是否登录
                 try {
-                    const response = await fetch('http://localhost:3000/api/current-user', {
+                    const response = await fetch('/api/current-user', {
                         credentials: 'include'
                     });
                     
@@ -670,7 +711,7 @@
                 
                 if (currentAnnotationId) {
                     // 编辑现有笔记
-                    url = `http://localhost:3000/api/annotations/${currentAnnotationId}`;
+                    url = `/api/annotations/${currentAnnotationId}`;
                     method = 'PUT';
                     body = { notes };
                 } else {
@@ -679,7 +720,7 @@
                         alert('请先选择文本');
                         return;
                     }
-                    url = `http://localhost:3000/api/articles/${articleId}/annotations`;
+                    url = `/api/articles/${articleId}/annotations`;
                     method = 'POST';
                     body = {
                         selectedText: currentSelection.text,
@@ -810,7 +851,7 @@
             }
             
             try {
-                const response = await fetch(`http://localhost:3000/api/annotations/${currentAnnotationId}`, {
+                const response = await fetch(`/api/annotations/${currentAnnotationId}`, {
                     method: 'DELETE',
                     credentials: 'include'
                 });
@@ -843,7 +884,7 @@
             }
             
             try {
-                const response = await fetch('http://localhost:3000/api/articles/{{ARTICLE_ID}}', {
+                const response = await fetch('/api/articles/{{ARTICLE_ID}}', {
                     method: 'DELETE',
                     credentials: 'include'
                 });
@@ -865,7 +906,7 @@
                 return;
             }
             try {
-                const response = await fetch('http://localhost:3000/api/articles/{{ARTICLE_ID}}/publish', {
+                const response = await fetch('/api/articles/{{ARTICLE_ID}}/publish', {
                     method: 'PATCH',
                     credentials: 'include'
                 });

@@ -1,5 +1,5 @@
-// API 基础 URL
-const API_URL = 'http://localhost:3000/api';
+// API 基础 URL - 使用相对路径，自动适配当前域名
+const API_URL = '/api';
 
 // 显示登录表单
 function showLoginForm() {

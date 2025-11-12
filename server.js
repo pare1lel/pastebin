@@ -11,11 +11,11 @@ const bcrypt = require('bcrypt');
 const session = require('express-session');
 
 const app = express();
-const PORT = 3000;
+const PORT = process.env.PORT || 3000;
 
 // MongoDB 连接配置
-const MONGODB_URI = 'mongodb://localhost:27017';
-const DB_NAME = 'articleReaderDB';
+const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017';
+const DB_NAME = process.env.DB_NAME || 'articleReaderDB';
 const COLLECTION_NAME = 'articles';
 const USERS_COLLECTION = 'users';
 const ANNOTATIONS_COLLECTION = 'annotations';
@@ -48,7 +48,7 @@ function calculateWordCount(text) {
 
 // 中间件
 app.use(cors({
-  origin: 'http://localhost:3000',
+  origin: true, // 允许所有来源，或者使用环境变量
   credentials: true
 }));
 app.use(bodyParser.json());
@@ -748,7 +748,8 @@ app.delete('/api/annotations/:id', requireAuth, async (req, res) => {
 async function startServer() {
   await connectDB();
   
-  app.listen(PORT, () => {
+  // 监听任何ip地址的请求
+  app.listen(PORT, '0.0.0.0', () => {
     console.log(`服务器已启动，访问 http://localhost:${PORT}`);
   });
 }
