@@ -441,6 +441,11 @@
             
             let node;
             while (node = walker.nextNode()) {
+                // 跳过笔记标记元素内的文本（以防万一）
+                if (node.parentElement && node.parentElement.classList.contains('annotation-number')) {
+                    continue;
+                }
+                
                 const nodeLength = node.textContent.length;
                 
                 if (currentOffset + nodeLength >= offset) {
@@ -538,13 +543,37 @@
             btn.classList.remove('show');
         }
 
-        // 获取文本在容器中的偏移量
+        // 获取文本在容器中的偏移量（排除笔记标记）
         function getTextOffset(node, offset) {
             const content = document.getElementById('articleContent');
-            const range = document.createRange();
-            range.setStart(content, 0);
-            range.setEnd(node, offset);
-            return range.toString().length;
+            let currentOffset = 0;
+            
+            const walker = document.createTreeWalker(
+                content,
+                NodeFilter.SHOW_TEXT,
+                null,
+                false
+            );
+            
+            let currentNode;
+            while (currentNode = walker.nextNode()) {
+                // 跳过笔记标记元素内的文本
+                if (currentNode.parentElement && currentNode.parentElement.classList.contains('annotation-number')) {
+                    continue;
+                }
+                
+                if (currentNode === node) {
+                    return currentOffset + offset;
+                }
+                
+                if (currentNode.compareDocumentPosition(node) & Node.DOCUMENT_POSITION_FOLLOWING) {
+                    currentOffset += currentNode.textContent.length;
+                } else {
+                    break;
+                }
+            }
+            
+            return currentOffset;
         }
 
         // 点击添加笔记按钮
@@ -702,9 +731,20 @@
             const updatedDate = new Date(annotation.updatedAt);
             document.getElementById('viewAnnotationUpdated').textContent = updatedDate.toLocaleString('zh-CN');
             
-            // 根据是否是作者显示编辑/删除按钮
+            // 根据权限显示编辑/删除按钮
             const ownerButtons = document.getElementById('annotationOwnerButtons');
-            if (annotation.isOwner) {
+            if (annotation.canDelete) {
+                ownerButtons.innerHTML = `
+                    <div class="ui red button" onclick="deleteCurrentAnnotation()">
+                        <i class="trash icon"></i>
+                        删除
+                    </div>
+                    ${annotation.isOwner ? `
+                    <div class="ui button" onclick="editCurrentAnnotation()" style="margin-left: .75em;">
+                        <i class="edit icon"></i>
+                        编辑
+                    </div>` : ''}
+                `;
                 ownerButtons.style.display = 'inline-block';
             } else {
                 ownerButtons.style.display = 'none';
@@ -759,8 +799,8 @@
             const annotation = annotations.find(a => a.id === currentAnnotationId);
             if (!annotation) return;
             
-            // 检查权限
-            if (!annotation.isOwner) {
+            // 检查权限（root 或所有者可以删除）
+            if (!annotation.canDelete) {
                 alert('您没有权限删除此笔记');
                 return;
             }

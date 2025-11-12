@@ -28,6 +28,24 @@ let annotationsCollection;
 // 配置文件上传
 const upload = multer({ dest: 'uploads/' });
 
+// 计算词数的辅助函数（中文按字数，英文按单词数）
+function calculateWordCount(text) {
+  if (!text || text.trim() === '') {
+    return 0;
+  }
+  
+  // 匹配中文字符（包括中文标点）
+  const chineseChars = text.match(/[\u4e00-\u9fa5]/g);
+  const chineseCount = chineseChars ? chineseChars.length : 0;
+  
+  // 移除中文字符后，计算英文单词数
+  const textWithoutChinese = text.replace(/[\u4e00-\u9fa5]/g, ' ');
+  const englishWords = textWithoutChinese.trim().split(/\s+/).filter(word => word.length > 0);
+  const englishCount = englishWords.length;
+  
+  return chineseCount + englishCount;
+}
+
 // 中间件
 app.use(cors({
   origin: 'http://localhost:3000',
@@ -348,7 +366,7 @@ app.post('/api/articles', requireAuth, async (req, res) => {
     const newArticle = {
       title: title.trim(),
       content: content.trim(),
-      wordCount: content.trim().split(/\s+/).length,
+      wordCount: calculateWordCount(content.trim()),
       author: req.session.username,
       authorId: req.session.userId,
       createdAt: new Date().toISOString(),
@@ -399,7 +417,7 @@ app.post('/api/articles/upload', requireAuth, upload.single('file'), async (req,
     const newArticle = {
       title: title || req.file.originalname.replace('.md', ''),
       content: content.trim(),
-      wordCount: content.trim().split(/\s+/).length,
+      wordCount: calculateWordCount(content.trim()),
       author: req.session.username,
       authorId: req.session.userId,
       createdAt: new Date().toISOString(),
@@ -576,6 +594,7 @@ app.get('/api/articles/:articleId/annotations', async (req, res) => {
       .sort({ annotationNumber: 1 })
       .toArray();
     
+    const isRoot = req.session.username === 'root';
     const formattedAnnotations = annotations.map(ann => ({
       id: ann._id.toString(),
       articleId: ann.articleId,
@@ -588,7 +607,8 @@ app.get('/api/articles/:articleId/annotations', async (req, res) => {
       notes: ann.notes,
       createdAt: ann.createdAt,
       updatedAt: ann.updatedAt,
-      isOwner: currentUserId && currentUserId === ann.userId // 是否是当前用户创建的
+      isOwner: currentUserId && currentUserId === ann.userId, // 是否是当前用户创建的
+      canDelete: isRoot || (currentUserId && currentUserId === ann.userId) // root 或所有者可以删除
     }));
     
     res.json(formattedAnnotations);
@@ -684,6 +704,7 @@ app.delete('/api/annotations/:id', requireAuth, async (req, res) => {
   try {
     const { id } = req.params;
     const userId = req.session.userId;
+    const isRoot = req.session.username === 'root';
     
     const annotation = await annotationsCollection.findOne({ _id: new ObjectId(id) });
     
@@ -691,7 +712,8 @@ app.delete('/api/annotations/:id', requireAuth, async (req, res) => {
       return res.status(404).json({ error: '笔记不存在' });
     }
     
-    if (annotation.userId !== userId) {
+    // root 用户可以删除任何笔记，其他用户只能删除自己的笔记
+    if (!isRoot && annotation.userId !== userId) {
       return res.status(403).json({ error: '无权删除此笔记' });
     }
     
